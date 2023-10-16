@@ -7,9 +7,9 @@ namespace AssettoServer.Server.Weather.Implementation;
 
 public class WeatherFxV1Implementation : IWeatherImplementation
 {
-    private readonly ACServer _acServer;
+    private readonly Lazy<ACServer> _acServer;
 
-    public WeatherFxV1Implementation(ACServer acServer, CSPFeatureManager cspFeatureManager)
+    public WeatherFxV1Implementation(Lazy<ACServer> acServer, CSPFeatureManager cspFeatureManager)
     {
         _acServer = acServer;
         cspFeatureManager.Add(new CSPFeature { Name = "WEATHERFX_V1", Mandatory = true });
@@ -17,6 +17,9 @@ public class WeatherFxV1Implementation : IWeatherImplementation
 
     public void SendWeather(WeatherData weather, ZonedDateTime dateTime, ACTcpClient? client = null)
     {
+        if (!_acServer.IsValueCreated)
+            return;
+
         var newWeather = new CSPWeatherUpdate
         {
             UnixTimestamp = (ulong) dateTime.ToInstant().ToUnixTimeSeconds(),
@@ -37,7 +40,7 @@ public class WeatherFxV1Implementation : IWeatherImplementation
 
         if (client == null)
         {
-            _acServer.BroadcastPacketUdp(in newWeather);
+            _acServer.Value.BroadcastPacketUdp(in newWeather);
         }
         else
         {

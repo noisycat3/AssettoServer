@@ -2,6 +2,7 @@
 
 public interface IEntryCar
 {
+    IACServer Server { get; }
     public byte SessionId { get; }
     public string Model { get; }
     public string Skin { get; }

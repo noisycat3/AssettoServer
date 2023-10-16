@@ -1,4 +1,5 @@
 ﻿using AssettoServer.Shared.Network.Packets.Outgoing;
+using Serilog;
 
 namespace AssettoServer.Shared.Model;
 
@@ -18,11 +19,16 @@ public interface IClient
     public string HashedGuid { get; }   // Hash of the player GUID
     public ulong? OwnerGuid { get; }    // GUID of the owner of the game license
 
+    public ILogger Logger { get; }
+
     // Send packet over TCP
     public void SendPacket<TPacket>(TPacket packet) where TPacket : IOutgoingNetworkPacket;
 
     // Send packet over UDP
     public void SendPacketUdp<TPacket>(in TPacket packet) where TPacket : IOutgoingNetworkPacket;
+
+    // Start disconnecting the client
+    public Task BeginDisconnectAsync();
 
     //  ************************
     //  BEGIN IClient EVENTS
@@ -41,16 +47,6 @@ public interface IClient
     /// Fires when a client has sent the first position update and becomes visible to other players.
     /// </summary>
     public event EventHandler<IClient, EventArgs>? GameLoaded;
-
-    /// <summary>
-    /// Fires when a client has been kicked.
-    /// </summary>
-    public event EventHandler<IClient, ClientAuditEventArgs>? Kicked;
-
-    /// <summary>
-    /// Fires when a client has been banned.
-    /// </summary>
-    public event EventHandler<IClient, ClientAuditEventArgs>? Banned;
 
     /// <summary>
     /// Fires when a player has disconnected.

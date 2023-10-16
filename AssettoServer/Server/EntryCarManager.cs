@@ -29,12 +29,14 @@ public class EntryCarManager
     
     private readonly ACServerConfiguration _configuration;
     private readonly IAdminService _adminService;
-    private readonly SessionManager _sessionManager;
-    private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
+    private readonly Lazy<SessionManager> _sessionManager;
     private readonly Lazy<OpenSlotFilterChain> _openSlotFilterChain;
 
     private readonly EntryCarClient.Factory _factoryEntryCarClient;
     private readonly EntryCarAi.Factory _factoryEntryCarAi;
+
+    // Connection semaphore
+    private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
 
     // Internal data
     private struct CarStatusUpdate
@@ -47,7 +49,7 @@ public class EntryCarManager
 
     private readonly CountedArray<CarStatusUpdate>[] _statusUpdates;
 
-    public EntryCarManager(ACServerConfiguration configuration, IAdminService adminService, SessionManager sessionManager,
+    public EntryCarManager(ACServerConfiguration configuration, IAdminService adminService, Lazy<SessionManager> sessionManager,
         Lazy<OpenSlotFilterChain> openSlotFilterChain, EntryCarClient.Factory factoryEntryCarClient, EntryCarAi.Factory factoryEntryCarAi)
     {
         _configuration = configuration;
@@ -229,7 +231,7 @@ public class EntryCarManager
                 continue;
 
             byte sessionId = (byte)updateListIndex;
-            long timeMs = _sessionManager.ServerTimeMilliseconds;
+            long timeMs = _sessionManager.Value.ServerTimeMilliseconds;
             _ = Task.Run(() =>
             {
                 // Client still valid

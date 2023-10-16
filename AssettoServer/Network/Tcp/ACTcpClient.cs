@@ -32,6 +32,7 @@ namespace AssettoServer.Network.Tcp;
 
 public class ACTcpClient : IClient
 {
+    private ACServer Server => _acServer;
     private ACUdpServer UdpServer { get; }
     public ILogger Logger { get; }
 
@@ -178,7 +179,7 @@ public class ACTcpClient : IClient
             if (!OutgoingPacketChannel.Writer.TryWrite(packet) && !(packet is SunAngleUpdate) && !IsDisconnectRequested)
             {
                 Logger.Warning("Cannot write packet to TCP packet queue for {ClientName}, disconnecting", Name);
-                _ = BeginDisconnectAsync();
+                _ = Server.KickAsync(this, "TCP send error");
             }
         }
         catch (Exception ex)
@@ -202,23 +203,18 @@ public class ACTcpClient : IClient
         catch (Exception ex)
         {
             Logger.Error(ex, "Error sending {PacketName} to {ClientName}", typeof(TPacket).Name, Name);
-            _ = BeginDisconnectAsync();
+            _ = Server.KickAsync(this, "UDP send error");
         }
     }
 
     public event EventHandler<IClient, HandshakeAcceptedEventArgs>? HandshakeAccepted;
     public event EventHandler<IClient, ClientChecksumResultEventArgs>? ChecksumCompleted;
     public event EventHandler<IClient, EventArgs>? GameLoaded;
-    public event EventHandler<IClient, ClientAuditEventArgs>? Kicked;
-    public event EventHandler<IClient, ClientAuditEventArgs>? Banned;
     public event EventHandler<IClient, EventArgs>? Disconnected;
     public event EventHandler<IClient, ChatMessageEventArgs>? ChatMessageEvent;
     public event EventHandler<IClient, ChatMessageEventArgs>? ChatRawEvent;
     public event EventHandler<IClient, LapCompletedEventArgs>? LapCompleted;
-
-    internal void NotifyClientKicked(ClientAuditEventArgs args) => Kicked?.Invoke(this, args);
-    internal void NotifyClientBanned(ClientAuditEventArgs args) => Banned?.Invoke(this, args);
-
+    
     private async Task SendLoopAsync()
     {
         try
@@ -247,7 +243,7 @@ public class ACTcpClient : IClient
         catch (Exception ex)
         {
             Logger.Error(ex, "Error sending TCP packet to {ClientName}", Name);
-            _ = BeginDisconnectAsync();
+            _ = Server.KickAsync(this, "Error sending TCP packet");
         }
     }
 
@@ -930,7 +926,7 @@ public class ACTcpClient : IClient
         return true;
     }
 
-    internal async Task BeginDisconnectAsync()
+    public async Task BeginDisconnectAsync()
     {
         try
         {

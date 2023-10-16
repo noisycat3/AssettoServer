@@ -18,7 +18,7 @@ public class HandshakeAcceptedEventArgs : EventArgs
     public required HandshakeResponse HandshakeResponse { get; init; }
 }
 
-public class ClientAuditEventArgs : EventArgs
+public class ClientAuditEventArgs : ClientConnectionEventArgs
 {
     public KickReason Reason { get; init; }
     public string? ReasonStr { get; init; }

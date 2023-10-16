@@ -18,9 +18,9 @@ public class EntryCarClient : EntryCarBase
     public override bool IsAiCar => false;
 
     // Factory
-    public delegate EntryCarClient Factory(byte sessionId);
+    public delegate EntryCarClient Factory(byte inSessionId);
 
-    public EntryCarClient( byte inSessionId, ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
+    public EntryCarClient(byte inSessionId, ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
         : base(inSessionId, acServer, configuration, entryCarManager, sessionManager)
     {
     }
@@ -146,7 +146,8 @@ public class EntryCarClient : EntryCarBase
                 return;
             _client.Logger.Debug("Invalid position update received from {ClientName} ({SessionId}), disconnecting",
                 _client.Name, _client.SessionId);
-            _ = _client.BeginDisconnectAsync();
+            Server.KickAsync(_client, "Invalid position update received");
+            //_ = _client.BeginDisconnectAsync();
             return;
         }
         

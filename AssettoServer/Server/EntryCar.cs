@@ -1,14 +1,5 @@
-﻿using AssettoServer.Network.Tcp;
-using System;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Threading.Tasks;
-using AssettoServer.Server.Ai.Splines;
-using AssettoServer.Server.Configuration;
+﻿using AssettoServer.Server.Configuration;
 using AssettoServer.Shared.Model;
-using AssettoServer.Shared.Network.Packets.Incoming;
-using AssettoServer.Shared.Network.Packets.Outgoing;
-using AssettoServer.Shared.Network.Packets.Shared;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -18,6 +9,7 @@ namespace AssettoServer.Server;
 public abstract class EntryCarBase : IEntryCar
 {
     // IEntry car interface
+    public IACServer Server => _acServer;
     public byte SessionId { get; }
     public virtual string Model => string.Empty;
     public virtual string Skin => string.Empty;
@@ -26,7 +18,6 @@ public abstract class EntryCarBase : IEntryCar
     public abstract ushort Ping { get; }
     public abstract int TimeOffset { get; }
     public abstract string Name { get; }
-
 
     // Game references
     protected readonly ACServer _acServer;

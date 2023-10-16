@@ -28,7 +28,8 @@ public class ChecksumManager
         TrackChecksums = CalculateTrackChecksums(_configuration.Server.Track, _configuration.Server.TrackConfig);
         Log.Information("Initialized {Count} track checksums", TrackChecksums.Count);
 
-        var carModels = _entryCarManager.EntryCars.Select(car => car.Model).Distinct().ToList();
+        //var carModels = _entryCarManager.EntryCars.Select(car => car.Model).Distinct().ToList();
+        var carModels = _configuration.EntryList.Cars.Select(car => car.Model).Distinct();
         CarChecksums = CalculateCarChecksums(carModels, _configuration.Extra.EnableAlternativeCarChecksums);
         Log.Information("Initialized {Count} car checksums", CarChecksums.Select(car => car.Value.Count).Sum());
 

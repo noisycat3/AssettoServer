@@ -8,9 +8,10 @@ namespace AssettoServer.Commands.TypeParsers;
 
 public class ACClientTypeParser : TypeParser<ACTcpClient>
 {
-    private readonly EntryCarManager _entryCarManager;
+    private readonly Lazy<EntryCarManager> _entryCarManager;
+    private EntryCarManager CarManager => _entryCarManager.Value;
 
-    public ACClientTypeParser(EntryCarManager entryCarManager)
+    public ACClientTypeParser(Lazy<EntryCarManager> entryCarManager)
     {
         _entryCarManager = entryCarManager;
     }
@@ -20,7 +21,7 @@ public class ACClientTypeParser : TypeParser<ACTcpClient>
         if (context is ACCommandContext acContext)
         {
             //if (int.TryParse(value, out int result) && _entryCarManager.ConnectedCars.TryGetValue(result, out EntryCar? car) && car.Client != null)
-            if (int.TryParse(value, out int result) && _entryCarManager.EntryCars[result] is { Client: ACTcpClient clientById })
+            if (int.TryParse(value, out int result) && CarManager.EntryCars[result] is { Client: ACTcpClient clientById })
                 return TypeParserResult<ACTcpClient>.Successful(clientById);
 
             ACTcpClient? exactMatch = null;
@@ -31,7 +32,7 @@ public class ACClientTypeParser : TypeParser<ACTcpClient>
             if (value.StartsWith("@"))
                 value = value.Substring(1);
 
-            foreach (EntryCarClient clientCar in _entryCarManager.ClientCars)
+            foreach (EntryCarClient clientCar in CarManager.ClientCars)
             {
                 // Client has a name and specific type
                 if (clientCar.Client is ACTcpClient { Name: { } } client)

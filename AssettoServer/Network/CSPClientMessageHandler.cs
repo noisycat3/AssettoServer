@@ -11,7 +11,7 @@ namespace AssettoServer.Network;
 
 public class CSPClientMessageHandler
 {
-    public CSPClientMessageHandler(ACServer acServer, CSPClientMessageTypeManager cspClientMessageTypeManager,
+    public CSPClientMessageHandler(Lazy<ACServer> acServer, CSPClientMessageTypeManager cspClientMessageTypeManager,
         EntryCarManager entryCarManager, ACServerConfiguration configuration)
     {
         _acServer = acServer;
@@ -20,7 +20,7 @@ public class CSPClientMessageHandler
         _configuration = configuration;
     }
 
-    private readonly ACServer _acServer;
+    private readonly Lazy<ACServer> _acServer;
     private readonly CSPClientMessageTypeManager _cspClientMessageTypeManager;
     private readonly EntryCarManager _entryCarManager;
     private readonly ACServerConfiguration _configuration;
@@ -57,7 +57,7 @@ public class CSPClientMessageHandler
                             sender.Name, sender.SessionId, packetType, clientMessage.Data);
                     }
 
-                    _acServer.BroadcastPacketUdp(in clientMessage);
+                    _acServer.Value.BroadcastPacketUdp(in clientMessage);
                 }
 
                 break;
@@ -98,7 +98,7 @@ public class CSPClientMessageHandler
                     {
                         sender.Logger.Verbose("Client message received from {ClientName} ({SessionId}), type {Type}, data {Data}",
                             sender.Name, sender.SessionId, packetType, clientMessage.Data);
-                        _acServer.BroadcastPacket(clientMessage);
+                        _acServer.Value.BroadcastPacket(clientMessage);
                     }
                 }
 
@@ -147,7 +147,7 @@ public class CSPClientMessageHandler
             }
             else
             {
-                _acServer.BroadcastPacketUdp(in clientMessage, sender, range, false);
+                _acServer.Value.BroadcastPacketUdp(in clientMessage, sender, range, false);
             }
         }
         else
@@ -158,7 +158,7 @@ public class CSPClientMessageHandler
             }
             else
             {
-                _acServer.BroadcastPacket(clientMessage);
+                _acServer.Value.BroadcastPacket(clientMessage);
             }
         }
     }

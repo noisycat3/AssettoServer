@@ -275,7 +275,7 @@ public class ACServer : CriticalBackgroundService, IACServer
     }
 
     // Public interface
-    public void BroadcastPacket<TPacket>(TPacket packet, ACTcpClient? sender = null) where TPacket : IOutgoingNetworkPacket
+    public void BroadcastPacket<TPacket>(TPacket packet, IClient? sender = null) where TPacket : IOutgoingNetworkPacket
     {
         foreach (EntryCarClient car in _entryCarManager.ClientCars)
         {
@@ -287,7 +287,7 @@ public class ACServer : CriticalBackgroundService, IACServer
         }
     }
 
-    public void BroadcastPacketUdp<TPacket>(in TPacket packet, ACTcpClient? sender = null, float? range = null, bool skipSender = true) where TPacket : IOutgoingNetworkPacket
+    public void BroadcastPacketUdp<TPacket>(in TPacket packet, IClient? sender = null, float? range = null, bool skipSender = true) where TPacket : IOutgoingNetworkPacket
     {
         foreach (EntryCarClient car in _entryCarManager.ClientCars)
         {
@@ -297,12 +297,12 @@ public class ACServer : CriticalBackgroundService, IACServer
             if (skipSender && car.Client == sender) 
                 continue;
 
-            if (!range.HasValue || (sender?.ClientCar != null && sender.ClientCar.IsInRange(car.Status, range.Value)))
+            if (!range.HasValue || (sender is ACTcpClient { ClientCar: {} clientCar } && clientCar.IsInRange(car.Status, range.Value)))
                 car.Client.SendPacketUdp(in packet);
         }
     }
 
-    public async Task KickAsync(ACTcpClient? client, string? reason = null, ACTcpClient? admin = null)
+    public async Task KickAsync(IClient? client, string? reason = null, IClient? admin = null)
     {
         if (client == null)
             return;
@@ -313,7 +313,7 @@ public class ACServer : CriticalBackgroundService, IACServer
         await KickAsync(client, KickReason.Kicked, reason, clientReason, broadcastReason, admin);
     }
 
-    public async Task BanAsync(ACTcpClient? client, string? reason = null, ACTcpClient? admin = null)
+    public async Task BanAsync(IClient? client, string? reason = null, IClient? admin = null)
     {
         if (client == null) return;
 
@@ -328,7 +328,7 @@ public class ACServer : CriticalBackgroundService, IACServer
         }
     }
 
-    public async Task KickAsync(ACTcpClient? client, KickReason reason, string? auditReason = null, string? clientReason = null, string? broadcastReason = null, ACTcpClient? admin = null)
+    public async Task KickAsync(IClient? client, KickReason reason, string? auditReason = null, string? clientReason = null, string? broadcastReason = null, IClient? admin = null)
     {
         if (client is { IsDisconnectRequested: false })
         {
@@ -346,6 +346,7 @@ public class ACServer : CriticalBackgroundService, IACServer
 
             ClientAuditEventArgs args = new ClientAuditEventArgs
             {
+                Client = client,
                 Reason = reason,
                 ReasonStr = broadcastReason,
                 Admin = admin
@@ -354,14 +355,12 @@ public class ACServer : CriticalBackgroundService, IACServer
             if (reason is KickReason.Kicked or KickReason.VoteKicked)
             {
                 client.Logger.Information("{ClientName} was kicked. Reason: {Reason}", client.Name, auditReason ?? "No reason given.");
-                client.NotifyClientKicked(args);
-                //ClientKicked?.Invoke(client, args);
+                ClientKicked?.Invoke(this, args);
             }
             else if (reason is KickReason.VoteBanned or KickReason.VoteBlacklisted)
             {
                 client.Logger.Information("{ClientName} was banned. Reason: {Reason}", client.Name, auditReason ?? "No reason given.");
-                client.NotifyClientBanned(args); 
-                //ClientBanned?.Invoke(client, args);
+                ClientBanned?.Invoke(this, args);
             }
 
             await client.BeginDisconnectAsync();
@@ -369,5 +368,7 @@ public class ACServer : CriticalBackgroundService, IACServer
     }
 
     public event EventHandler<IACServer, ClientConnectionEventArgs>? ClientConnected;
+    public event EventHandler<IACServer, ClientAuditEventArgs>? ClientKicked;
+    public event EventHandler<IACServer, ClientAuditEventArgs>? ClientBanned;
     public event EventHandler<IACServer, ClientConnectionEventArgs>? ClientDisconnected;
 }

@@ -1,4 +1,5 @@
-﻿using AssettoServer.Network.Tcp;
+﻿using System;
+using AssettoServer.Network.Tcp;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 using AssettoServer.Shared.Weather;
 using NodaTime;
@@ -7,11 +8,11 @@ namespace AssettoServer.Server.Weather.Implementation;
 
 public class VanillaWeatherImplementation : IWeatherImplementation
 {
-    private readonly ACServer _acServer;
+    private readonly Lazy<ACServer> _acServer;
     private readonly IWeatherTypeProvider _weatherTypeProvider;
     private WeatherUpdate? _lastWeather;
 
-    public VanillaWeatherImplementation(ACServer acServer, IWeatherTypeProvider weatherTypeProvider)
+    public VanillaWeatherImplementation(Lazy<ACServer> acServer, IWeatherTypeProvider weatherTypeProvider)
     {
         _acServer = acServer;
         _weatherTypeProvider = weatherTypeProvider;
@@ -19,6 +20,9 @@ public class VanillaWeatherImplementation : IWeatherImplementation
     
     public void SendWeather(WeatherData weather, ZonedDateTime dateTime, ACTcpClient? client = null)
     {
+        if (!_acServer.IsValueCreated)
+            return;
+
         var wfxParams = new WeatherFxParams
         {
             Type = weather.Type.WeatherFxType,
@@ -48,10 +52,10 @@ public class VanillaWeatherImplementation : IWeatherImplementation
                 || weatherUpdate.WindDirection != _lastWeather.WindDirection
                 || weatherUpdate.WindSpeed != _lastWeather.WindSpeed)
             {
-                _acServer.BroadcastPacket(weatherUpdate);
+                _acServer.Value.BroadcastPacket(weatherUpdate);
             }
 
-            _acServer.BroadcastPacket(PrepareSunAngleUpdate(dateTime));
+            _acServer.Value.BroadcastPacket(PrepareSunAngleUpdate(dateTime));
         }
         else
         {
