@@ -43,11 +43,24 @@ public class EntryCarManager
     {
         public byte SessionId;
         public ushort Ping;
-        public int TimeOffset;
         public CarStatus Status;
     }
 
-    private readonly CountedArray<CarStatusUpdate>[] _statusUpdates;
+    private class CarStatusUpdateList
+    {
+        public CarStatusUpdateList(int maxCars)
+        {
+            RelativeTime = 0;
+            Updates = new CountedArray<CarStatusUpdate>(maxCars);
+        }
+
+        public int RelativeTime;
+        public readonly CountedArray<CarStatusUpdate> Updates;
+
+        public bool UpdatesPending => (Updates.Count > 0);
+    }
+
+    private readonly CarStatusUpdateList[] _statusUpdates;
 
     public EntryCarManager(ACServerConfiguration configuration, IAdminService adminService, Lazy<SessionManager> sessionManager,
         Lazy<OpenSlotFilterChain> openSlotFilterChain, EntryCarClient.Factory factoryEntryCarClient, EntryCarAi.Factory factoryEntryCarAi)
@@ -62,9 +75,9 @@ public class EntryCarManager
 
         // N^2 array of position updates - around 3MB with 200 cars. We good.
         int maxCars = configuration.EntryList.Cars.Count;
-        _statusUpdates = new CountedArray<CarStatusUpdate>[maxCars];
+        _statusUpdates = new CarStatusUpdateList[maxCars];
         for (int i = 0; i < maxCars; i++)
-            _statusUpdates[i] = new CountedArray<CarStatusUpdate>(maxCars);
+            _statusUpdates[i] = new CarStatusUpdateList(maxCars);
     }
 
     internal async Task HandleClientDisconnected(ACTcpClient client)
@@ -188,13 +201,15 @@ public class EntryCarManager
 
     internal void Update()
     {
+        long currentTime = _sessionManager.Value.ServerTimeMilliseconds;
+
         // Update all cars
         foreach (EntryCarBase car in EntryCars)
-            car.UpdateCar();
+            car.UpdateCar(currentTime);
 
         // Clear old car data
-        foreach (CountedArray<CarStatusUpdate> updateList in _statusUpdates)
-            updateList.Clear();
+        foreach (CarStatusUpdateList updateList in _statusUpdates)
+            updateList.Updates.Clear();
 
         // Prepare car data to send
         foreach (EntryCarClient clientCar in ClientCars)
@@ -206,9 +221,11 @@ public class EntryCarManager
             if (!client.InGame || !client.IsUdpReady)
                 continue;
 
+            // Gather update data
+            _statusUpdates[client.SessionId].RelativeTime = clientCar.TimeOffset;
             foreach (EntryCarBase otherCar in EntryCars)
             {
-                if (!otherCar.HasUpdateToSend)
+                if (!otherCar.HasUpdateToSend || otherCar == clientCar)
                     continue;
 
                 CarStatus? status = otherCar.GetPositionUpdateForClient(clientCar);
@@ -216,11 +233,10 @@ public class EntryCarManager
                     continue;
 
                 // Register the update
-                _statusUpdates[client.SessionId].Add(new CarStatusUpdate()
+                _statusUpdates[client.SessionId].Updates.Add(new CarStatusUpdate()
                 {
                     SessionId = otherCar.SessionId,
                     Ping = otherCar.Ping,
-                    TimeOffset = clientCar.TimeOffset,
                     Status = status,
                 });
             }
@@ -229,26 +245,26 @@ public class EntryCarManager
         // Now send all the updates through the server in an async manner
         for (int updateListIndex = 0; updateListIndex < _statusUpdates.Length; updateListIndex++)
         {
-            if (_statusUpdates[updateListIndex].Count == 0)
+            CarStatusUpdateList updateList = _statusUpdates[updateListIndex];
+            if (!updateList.UpdatesPending)
                 continue;
 
             byte sessionId = (byte)updateListIndex;
-            long timeMs = _sessionManager.Value.ServerTimeMilliseconds;
+            //long timeMs = _sessionManager.Value.ServerTimeMilliseconds;
 
             // Client still valid
             EntryCarBase baseCar = EntryCars[sessionId];
             if ((baseCar.Client is not ACTcpClient { ClientCar: { } clientCar } client) || (clientCar != baseCar))
                 return;
 
-            CountedArray<CarStatusUpdate> updateList = _statusUpdates[sessionId];
-            PositionUpdateOut[] packetArray = updateList
-                .Select(u => Private_MakePositionUpdateFromCarState(u.SessionId, u.Ping, u.TimeOffset, u.Status))
+            PositionUpdateOut[] packetArray = updateList.Updates
+                .Select(u => Private_MakePositionUpdateFromCarState(u.SessionId, u.Ping, updateList.RelativeTime, u.Status))
                 .ToArray();
 
             const int chunkSize = 20;
             if (client.SupportsCSPCustomUpdate)
             {
-                for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
+                for (int packetIndex = 0; packetIndex < packetArray.Length; packetIndex += chunkSize)
                 {
                     client.SendPacketUdp(new CSPPositionUpdate(
                         new ArraySegment<PositionUpdateOut>(packetArray, packetIndex, Math.Min(chunkSize, packetArray.Length - packetIndex))));
@@ -256,7 +272,7 @@ public class EntryCarManager
             }
             else
             {
-                for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
+                for (int packetIndex = 0; packetIndex < packetArray.Length; packetIndex += chunkSize)
                 {
                     client.SendPacketUdp(packetArray[packetIndex]);
                     //client.SendPacketUdp(new BatchedPositionUpdate((uint)(timeMs - clientCar.TimeOffset), clientCar.Ping,
@@ -270,11 +286,11 @@ public class EntryCarManager
         }
     }
 
-    private static PositionUpdateOut Private_MakePositionUpdateFromCarState(byte sessionId, ushort ping, int timeOffset, CarStatus status)
+    private static PositionUpdateOut Private_MakePositionUpdateFromCarState(byte sessionId, ushort ping, int targetTimeOffset, CarStatus status)
     {
         return new PositionUpdateOut(sessionId,
             status.PakSequenceId,
-            (uint)(status.Timestamp - timeOffset),
+            (uint)(status.Timestamp - targetTimeOffset),
             ping,
             status.Position,
             status.Rotation,

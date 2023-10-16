@@ -74,7 +74,7 @@ public abstract class EntryCarBase : IEntryCar
     }
 
     // Called to perform general update of each car
-    public virtual void UpdateCar() { }
+    public virtual void UpdateCar(long currentTime) { }
 
     // Called after car state has been sent
     public virtual void PostUpdateCar() { }

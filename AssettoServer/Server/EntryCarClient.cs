@@ -55,13 +55,13 @@ public class EntryCarClient : EntryCarBase
     private bool _hasUpdateToSend;
 
     // EntryCarBase implementation
-    public override void UpdateCar()
+    public override void UpdateCar(long currentTime)
     {
         if (_client == null || !_client.HasSentFirstUpdate)
             return;
         
-        CheckAfk(_client);
-        UpdatePing(_client);
+        CheckAfk(_client, currentTime);
+        UpdatePing(_client, currentTime);
     }
 
     public override CarStatus? GetPositionUpdateForClient(EntryCarClient clientCar)
@@ -200,12 +200,12 @@ public class EntryCarClient : EntryCarBase
     }
 
     // Private methods
-    private void CheckAfk(ACTcpClient client)
+    private void CheckAfk(ACTcpClient client, long currentTime)
     {
         if (!_configuration.Extra.EnableAntiAfk || client.IsAdministrator)
             return;
 
-        long timeAfk = _sessionManager.ServerTimeMilliseconds - LastActiveTime;
+        long timeAfk = currentTime - LastActiveTime;
         if (timeAfk > _configuration.Extra.MaxAfkTimeMilliseconds)
             _ = Task.Run(() => _acServer.KickAsync(client, "being AFK"));
         else if (!HasSentAfkWarning && _configuration.Extra.MaxAfkTimeMilliseconds - timeAfk < 60000)
@@ -215,14 +215,14 @@ public class EntryCarClient : EntryCarBase
         }
     }
 
-    private void UpdatePing(ACTcpClient client)
+    private void UpdatePing(ACTcpClient client, long currentTime)
     {
-        if ((_sessionManager.ServerTimeMilliseconds - LastPingTime) > 1000)
+        if ((currentTime - LastPingTime) > 1000)
         {
-            LastPingTime = _sessionManager.ServerTimeMilliseconds;
+            LastPingTime = currentTime;
             client.SendPacketUdp(new PingUpdate((uint)LastPingTime, Ping));
 
-            if (_sessionManager.ServerTimeMilliseconds - LastPongTime > 15000)
+            if (currentTime - LastPongTime > 15000)
             {
                 client.Logger.Information("{ClientName} has not sent a ping response for over 15 seconds", client.Name);
                 _ = client.BeginDisconnectAsync();
