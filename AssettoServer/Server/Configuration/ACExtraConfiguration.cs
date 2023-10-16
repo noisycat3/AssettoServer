@@ -5,19 +5,18 @@ using System.Numerics;
 using System.Reflection;
 using AssettoServer.Server.Plugin;
 using Autofac;
-using CommunityToolkit.Mvvm.ComponentModel;
 using FluentValidation;
 using JetBrains.Annotations;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NodeTypeResolvers;
-#pragma warning disable CS0657
+//#pragma warning disable CS0657
 
 namespace AssettoServer.Server.Configuration;
 
 [UsedImplicitly(ImplicitUseKindFlags.Assign, ImplicitUseTargetFlags.WithMembers)]
-public partial class ACExtraConfiguration : ObservableObject
+public class ACExtraConfiguration
 {
     [YamlMember(Description = "Enable Steam ticket validation. Requires CSP 0.1.75+ and a recent version of Content Manager")]
     public bool UseSteamAuth { get; init; } = false;
@@ -35,6 +34,8 @@ public partial class ACExtraConfiguration : ObservableObject
     public int MaxPing { get; set; } = 500;
     [YamlMember(Description = "Maximum ping duration before autokick")]
     public int MaxPingSeconds { get; set; } = 10;
+    [YamlMember(Description = "Maximum time for the client to validate the checksums, in seconds")]
+    public int MaxChecksumWaitTime { get; set; } = 30;
     [YamlMember(Description = "Force headlights on for all cars")]
     public bool ForceLights { get; set; }
     [YamlMember(Description = "Distance for network optimizations. Players outside of this range will send less updates to reduce network traffic")]
@@ -79,8 +80,6 @@ public partial class ACExtraConfiguration : ObservableObject
     public bool ForceServerTrackParams { get; init; } = false;
     [YamlMember(Description = "Allow cars to have multiple data checksums. Instead of a single checksummed data.acd, you can have multiple data*.acd files in the car folder and players can join with any of these files")]
     public bool EnableAlternativeCarChecksums { get; init; } = false;
-    [YamlMember(Description = "Enable the AC UDP plugin interface compatible with Kunos acServer plugins")]
-    public bool EnableLegacyPluginInterface { get; init; } = false;
     [YamlMember(Description = "Automatically configure port forwards using UPnP or NAT-PMP. Empty = Enable on Windows when lobby registration is enabled. true = Always enable, detailed error log. false = Always disable")]
     public bool? EnableUPnP { get; init; } = false;
     [YamlMember(Description = "URL of custom loading screen image. Requires CSP 0.1.80+ and a recent version of Content Manager")]
@@ -198,7 +197,7 @@ public class LokiSettings
 }
 
 [UsedImplicitly(ImplicitUseKindFlags.Assign, ImplicitUseTargetFlags.WithMembers)]
-public partial class AiParams : ObservableObject
+public partial class AiParams
 {
     [YamlMember(Description = "Radius around a player in which AI cars won't despawn")]
     public float PlayerRadiusMeters { get; set; } = 200.0f;
@@ -234,67 +233,39 @@ public partial class AiParams : ObservableObject
     public float MaxSpeedKph { get; set; } = 80;
     [YamlMember(Description = "Speed offset for right lanes. Will be added to MaxSpeedKph")]
     public float RightLaneOffsetKph { get; set; } = 10;
-    [YamlMember(Description = "Maximum speed variation")]
-    public float MaxSpeedVariationPercent { get; set; } = 0.15f;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "Default AI car deceleration for obstacle/collision detection (m/s^2)")]
-    private float _defaultDeceleration = 8.5f;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "Default AI car acceleration for obstacle/collision detection (m/s^2)")]
-    private float _defaultAcceleration = 2.5f;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "Maximum AI car target count for AI slot overbooking. This is not an absolute maximum and might be slightly higher")]
-    private int _maxAiTargetCount = 300;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "Number of AI cars per player the server will try to keep")]
-    private int _aiPerPlayerTargetCount = 10;
-    
     [YamlMember(Description = "Soft player limit, the server will stop accepting new players when this many players are reached. Use this to ensure a minimum amount of AI cars. 0 to disable.")]
     public int MaxPlayerCount { get; set; } = 0;
     [YamlMember(Description = "Hide AI car nametags and make them invisible on the minimap. Broken on CSP versions < 0.1.78")]
     public bool HideAiCars { get; set; } = false;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "AI spline height offset. Use this if the AI spline is too close to the ground")]
-    private float _splineHeightOffsetMeters = 0;
-    
+    [YamlMember(Description = "AI spline height offset. Use this if the AI spline is too close to the ground")]
+    public float SplineHeightOffsetMeters = 0;
     [YamlMember(Description = "Lane width for adjacent lane detection")]
     public float LaneWidthMeters { get; init; } = 3.0f;
     [YamlMember(Description = "Enable two way traffic. This will allow AI cars to spawn in lanes with the opposite direction of travel to the player.")]
     public bool TwoWayTraffic { get; set; } = false;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "AI cornering speed factor. Lower = AI cars will drive slower around corners.")]
-    private float _corneringSpeedFactor = 1;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "AI cornering brake distance factor. Lower = AI cars will brake later for corners.")]
-    private float _corneringBrakeDistanceFactor = 1;
-    
-    [ObservableProperty]
-    [property: YamlMember(Description = "AI cornering brake force factor. This is multiplied with DefaultDeceleration. Lower = AI cars will brake less hard for corners.")]
-    private float _corneringBrakeForceFactor = 1;
-    
+    [YamlMember(Description = "AI cornering speed factor. Lower = AI cars will drive slower around corners.")]
+    public float CorneringSpeedFactor = 1;
+    [YamlMember(Description = "AI cornering brake distance factor. Lower = AI cars will brake later for corners.")]
+    public float CorneringBrakeDistanceFactor = 1;
+    [YamlMember(Description = "AI cornering brake force factor. This is multiplied with DefaultDeceleration. Lower = AI cars will brake less hard for corners.")]
+    public float CorneringBrakeForceFactor = 1;
     [YamlMember(Description = "Name prefix for AI cars. Names will be in the form of '<NamePrefix> <SessionId>'")]
     public string NamePrefix { get; init; } = "Traffic";
     [YamlMember(Description = "Ignore obstacles for some time if the AI car is stopped for longer than x seconds")]
     public int IgnoreObstaclesAfterSeconds { get; set; } = 10;
     
-    [ObservableProperty]
-    [property: YamlMember(Description = "Apply scale to some traffic density related settings. Increasing this DOES NOT magically increase your traffic density, it is dependent on your other settings. Values higher than 1 not recommended.")]
-    private float _trafficDensity = 1.0f;
+    [YamlMember(Description = "Apply scale to some traffic density related settings. Increasing this DOES NOT magically increase your traffic density, it is dependent on your other settings. Values higher than 1 not recommended.")]
+    public float TtrafficDensity = 1.0f;
     
     [YamlMember(Description = "Dynamic (hourly) traffic density. List must have exactly 24 entries in the format [0.2, 0.5, 1, 0.7, ...]")]
     public List<float>? HourlyTrafficDensity { get; set; }
     
-    [ObservableProperty]
-    [property: YamlMember(Description = "Tyre diameter of AI cars in meters, shouldn't have to be changed unless some cars are creating lots of smoke.")]
-    private float _tyreDiameterMeters = 0.65f;
-    
+    [YamlMember(Description = "Tyre diameter of AI cars in meters, shouldn't have to be changed unless some cars are creating lots of smoke.")]
+    public float TyreDiameterMeters = 0.65f;
+
+    [YamlMember(Description = "Size of the cell on spatial grid")]
+    public float SpatialHashMapCellSize { get; set; }
+
     [YamlMember(Description = "Apply some smoothing to AI spline camber")]
     public bool SmoothCamber { get; init; } = false;
     [YamlMember(Description = "Show debug overlay for AI cars")]

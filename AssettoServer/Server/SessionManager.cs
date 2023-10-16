@@ -145,7 +145,7 @@ public class SessionManager
 
         if (target == null)
         {
-            foreach (var car in _entryCarManager.EntryCars.Where(c => c.Client != null && c.Client.HasSentFirstUpdate))
+            foreach (EntryCarClient car in _entryCarManager.ClientCars.Where(c => c.Client is { InGame: true }))
             {
                 packet.StartTime = CurrentSession.StartTimeMilliseconds - car.TimeOffset;
                 car.Client?.SendPacket(packet);

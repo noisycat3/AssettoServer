@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using AssettoServer.Server.Ai.Configuration;
 using AssettoServer.Server.Configuration;
+using AssettoServer.Shared.Utils;
 using AssettoServer.Utils;
 using Serilog;
 using YamlDotNet.Serialization;

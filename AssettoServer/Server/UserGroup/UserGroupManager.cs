@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using AssettoServer.Server.Configuration;
+using AssettoServer.Shared.Utils;
 
 namespace AssettoServer.Server.UserGroup;
 

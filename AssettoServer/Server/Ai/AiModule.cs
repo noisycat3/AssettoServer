@@ -18,19 +18,15 @@ public class AiModule : Module
 
     protected override void Load(ContainerBuilder builder)
     {
-        builder.RegisterType<AiState>().AsSelf();
+        // OLD AI: Register AiState
+        //builder.RegisterType<AiState>().AsSelf();
 
         if (_configuration.Extra.EnableAi)
         {
-            builder.RegisterType<AiBehavior>().AsSelf().As<IAssettoServerAutostart>().SingleInstance();
-            builder.RegisterType<AiUpdater>().AsSelf().SingleInstance().AutoActivate();
+            // OLD AI: Register AiBehavior, AiUpdater
+            //builder.RegisterType<AiBehavior>().AsSelf().As<IAssettoServerAutostart>().SingleInstance();
+            //builder.RegisterType<AiUpdater>().AsSelf().SingleInstance().AutoActivate();
             builder.RegisterType<AiSlotFilter>().As<IOpenSlotFilter>();
-            
-            if (_configuration.Extra.AiParams.HourlyTrafficDensity != null)
-            {
-                builder.RegisterType<DynamicTrafficDensity>().As<IHostedService>().SingleInstance();
-            }
-
             builder.RegisterType<AiSplineWriter>().AsSelf();
             builder.RegisterType<FastLaneParser>().AsSelf();
             builder.RegisterType<AiSplineLocator>().AsSelf();

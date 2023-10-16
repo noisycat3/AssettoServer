@@ -10,6 +10,7 @@ using AssettoServer.Server;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Server.Weather.Implementation;
 using AssettoServer.Server.Whitelist;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 using AssettoServer.Shared.Network.Packets.Shared;
 using AssettoServer.Shared.Weather;
@@ -21,6 +22,7 @@ namespace AssettoServer.Commands.Modules;
 [UsedImplicitly(ImplicitUseKindFlags.Access, ImplicitUseTargetFlags.WithMembers)]
 public class AdminModule : ACModuleBase
 {
+    private readonly ACServer _acServer;
     private readonly IWeatherImplementation _weatherImplementation;
     private readonly WeatherManager _weatherManager;
     private readonly DefaultWeatherProvider _weatherProvider;
@@ -29,8 +31,11 @@ public class AdminModule : ACModuleBase
     private readonly EntryCarManager _entryCarManager;
     private readonly IWhitelistService _whitelist;
 
-    public AdminModule(IWeatherImplementation weatherImplementation, WeatherManager weatherManager, DefaultWeatherProvider weatherProvider, ACServerConfiguration configuration, SessionManager sessionManager, EntryCarManager entryCarManager, IWhitelistService whitelist)
+    public AdminModule(ACServer acServer, IWeatherImplementation weatherImplementation, WeatherManager weatherManager, 
+        DefaultWeatherProvider weatherProvider, ACServerConfiguration configuration, SessionManager sessionManager, EntryCarManager entryCarManager, IWhitelistService whitelist)
     {
+        _acServer = acServer;
+
         _weatherImplementation = weatherImplementation;
         _weatherManager = weatherManager;
         _weatherProvider = weatherProvider;
@@ -50,7 +55,7 @@ public class AdminModule : ACModuleBase
         else
         {
             Reply($"Steam profile of {player.Name}: https://steamcommunity.com/profiles/{player.Guid}");
-            return _entryCarManager.KickAsync(player, reason, Context.Client);
+            return _acServer.KickAsync(player, reason, Context.Client);
         }
 
         return Task.CompletedTask;
@@ -70,7 +75,7 @@ public class AdminModule : ACModuleBase
             {
                 Reply($"{player.Name} is using Steam Family Sharing, banning game owner https://steamcommunity.com/profiles/{player.OwnerGuid}");
             }
-            return _entryCarManager.BanAsync(player, reason, Context.Client);
+            return _acServer.BanAsync(player, reason, Context.Client);
         }
 
         return Task.CompletedTask;
@@ -156,23 +161,25 @@ public class AdminModule : ACModuleBase
     [Command("distance"), RequireConnectedPlayer]
     public void GetDistance([Remainder] ACTcpClient player)
     {
-        Reply(Vector3.Distance(Context.Client!.EntryCar.Status.Position, player.EntryCar.Status.Position).ToString(CultureInfo.InvariantCulture));
+        if (Context.Client?.ClientCar?.Status is {} contextStatus && player.ClientCar?.Status is {} playerStatus)
+            Reply(Vector3.Distance(contextStatus.Position, playerStatus.Position).ToString(CultureInfo.InvariantCulture));
     }
 
-    [Command("forcelights")]
-    public void ForceLights(string toggle, [Remainder] ACTcpClient player)
-    {
-        bool forceLights = toggle == "on";
-        player.EntryCar.ForceLights = forceLights;
+    //[Command("forcelights")]
+    //public void ForceLights(string toggle, [Remainder] ACTcpClient player)
+    //{
+    //    bool forceLights = toggle == "on";
+    //    player.ClientCar.ForceLights = forceLights;
 
-        Reply($"{player.Name}'s lights {(forceLights ? "will" : "will not")} be forced on.");
-    }
+    //    Reply($"{player.Name}'s lights {(forceLights ? "will" : "will not")} be forced on.");
+    //}
 
     [Command("whois")]
     public void WhoIs(ACTcpClient player)
     {
-        Reply($"IP: {(player.TcpClient.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address}\nProfile: https://steamcommunity.com/profiles/{player.Guid}\nPing: {player.EntryCar.Ping}ms");
-        Reply($"Position: {player.EntryCar.Status.Position}\nVelocity: {(int)(player.EntryCar.Status.Velocity.Length() * 3.6)}kmh");
+        Reply($"IP: {(player.TcpClient.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address}\nProfile: https://steamcommunity.com/profiles/{player.Guid}\nPing: {player.ClientCar?.Ping}ms");
+        if (player.ClientCar?.Status is { } status)
+            Reply($"Position: {status.Position}\nVelocity: {(int)(status.Velocity.Length() * 3.6)}kmh");
         if (player.OwnerGuid.HasValue && player.Guid != player.OwnerGuid)
         {
             Reply($"Steam Family Sharing Owner: https://steamcommunity.com/profiles/{player.OwnerGuid}");

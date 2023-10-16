@@ -9,11 +9,21 @@ using Serilog;
 
 namespace AssettoServer.Network;
 
-public class CSPClientMessageHandler(CSPClientMessageTypeManager cspClientMessageTypeManager, EntryCarManager entryCarManager, ACServerConfiguration configuration)
+public class CSPClientMessageHandler
 {
-    private readonly CSPClientMessageTypeManager _cspClientMessageTypeManager = cspClientMessageTypeManager;
-    private readonly EntryCarManager _entryCarManager = entryCarManager;
-    private readonly ACServerConfiguration _configuration = configuration;
+    public CSPClientMessageHandler(ACServer acServer, CSPClientMessageTypeManager cspClientMessageTypeManager,
+        EntryCarManager entryCarManager, ACServerConfiguration configuration)
+    {
+        _acServer = acServer;
+        _cspClientMessageTypeManager = cspClientMessageTypeManager;
+        _entryCarManager = entryCarManager;
+        _configuration = configuration;
+    }
+
+    private readonly ACServer _acServer;
+    private readonly CSPClientMessageTypeManager _cspClientMessageTypeManager;
+    private readonly EntryCarManager _entryCarManager;
+    private readonly ACServerConfiguration _configuration;
 
     public void OnCSPClientMessageUdp(ACTcpClient sender, PacketReader reader)
     {
@@ -47,7 +57,7 @@ public class CSPClientMessageHandler(CSPClientMessageTypeManager cspClientMessag
                             sender.Name, sender.SessionId, packetType, clientMessage.Data);
                     }
 
-                    _entryCarManager.BroadcastPacketUdp(in clientMessage);
+                    _acServer.BroadcastPacketUdp(in clientMessage);
                 }
 
                 break;
@@ -88,7 +98,7 @@ public class CSPClientMessageHandler(CSPClientMessageTypeManager cspClientMessag
                     {
                         sender.Logger.Verbose("Client message received from {ClientName} ({SessionId}), type {Type}, data {Data}",
                             sender.Name, sender.SessionId, packetType, clientMessage.Data);
-                        _entryCarManager.BroadcastPacket(clientMessage);
+                        _acServer.BroadcastPacket(clientMessage);
                     }
                 }
 
@@ -129,15 +139,15 @@ public class CSPClientMessageHandler(CSPClientMessageTypeManager cspClientMessag
         {
             if (sessionId.HasValue)
             {
-                var client = _entryCarManager.EntryCars[sessionId.Value].Client;
-                if (client != null && (!range.HasValue || sender.EntryCar.IsInRange(client.EntryCar, range.Value)))
+                if (_entryCarManager.EntryCars[sessionId.Value].Client is ACTcpClient client && 
+                    (!range.HasValue || sender.ClientCar!.IsInRange(client.ClientCar!.Status, range.Value)))
                 {
                     client.SendPacketUdp(in clientMessage);
                 }
             }
             else
             {
-                _entryCarManager.BroadcastPacketUdp(in clientMessage, sender, range, false);
+                _acServer.BroadcastPacketUdp(in clientMessage, sender, range, false);
             }
         }
         else
@@ -148,7 +158,7 @@ public class CSPClientMessageHandler(CSPClientMessageTypeManager cspClientMessag
             }
             else
             {
-                _entryCarManager.BroadcastPacket(clientMessage);
+                _acServer.BroadcastPacket(clientMessage);
             }
         }
     }

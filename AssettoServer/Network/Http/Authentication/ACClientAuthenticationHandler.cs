@@ -2,6 +2,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
+using AssettoServer.Network.Tcp;
 using AssettoServer.Server;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
@@ -33,9 +34,9 @@ public class ACClientAuthenticationHandler : AuthenticationHandler<ACClientAuthe
         {
             return Task.FromResult(AuthenticateResult.Fail("Invalid car id."));
         }
-        var apiKey = apiKeyHdr.ToString();
-
-        if (_entryCarManager.EntryCars[carId].Client?.ApiKey == apiKey)
+        
+        string apiKey = apiKeyHdr.ToString();
+        if (_entryCarManager.EntryCars[carId].Client is ACTcpClient { ApiKey: {} clientKey } acClient && clientKey == apiKey)
         {
             var client = _entryCarManager.EntryCars[carId].Client!;
 
@@ -50,7 +51,7 @@ public class ACClientAuthenticationHandler : AuthenticationHandler<ACClientAuthe
                 claims.Add(new Claim(ClaimTypes.Role, "Administrator"));
             }
 
-            var claimsIdentity = new ACClientClaimsIdentity(claims, nameof(ACClientAuthenticationHandler)) { Client = client };
+            var claimsIdentity = new ACClientClaimsIdentity(claims, nameof(ACClientAuthenticationHandler)) { Client = acClient };
             var ticket = new AuthenticationTicket(new ClaimsPrincipal(claimsIdentity), Scheme.Name);
             return Task.FromResult(AuthenticateResult.Success(ticket));
         }

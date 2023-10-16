@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -16,17 +15,19 @@ using AssettoServer.Server.Whitelist;
 using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 using AssettoServer.Shared.Network.Packets.Shared;
-using AssettoServer.Shared.Services;
 using AssettoServer.Utils;
 using Microsoft.Extensions.Hosting;
 using Prometheus;
 using Serilog;
+using AssettoServer.Shared.Services;
+using AssettoServer.Shared.Utils;
 
 namespace AssettoServer.Server;
 
-public class ACServer : CriticalBackgroundService
+public class ACServer : CriticalBackgroundService, IACServer
 {
     private readonly ACServerConfiguration _configuration;
+    private readonly IBlacklistService _blacklist;
     private readonly SessionManager _sessionManager;
     private readonly EntryCarManager _entryCarManager;
     private readonly GeoParamsManager _geoParamsManager;
@@ -59,6 +60,7 @@ public class ACServer : CriticalBackgroundService
         Log.Information("Starting server");
             
         _configuration = configuration;
+        _blacklist = blacklistService;
         _sessionManager = sessionManager;
         _entryCarManager = entryCarManager;
         _geoParamsManager = geoParamsManager;
@@ -69,7 +71,7 @@ public class ACServer : CriticalBackgroundService
         _autostartServices.AddRange(autostartServices);
         _autostartServices.Add(kunosLobbyRegistration);
 
-        blacklistService.Changed += OnChanged;
+        blacklistService.Changed += OnBlacklistChanged;
 
         cspFeatureManager.Add(new CSPFeature { Name = "SPECTATING_AWARE" });
         cspFeatureManager.Add(new CSPFeature { Name = "LOWER_CLIENTS_SENDING_RATE" });
@@ -103,6 +105,22 @@ public class ACServer : CriticalBackgroundService
         }
     }
 
+    internal void NotifyClientConnected(ACTcpClient client)
+    {
+        ClientConnected?.Invoke(this, new ClientConnectionEventArgs()
+        {
+            Client = client
+        });
+    }
+
+    internal void NotifyClientDisconnected(ACTcpClient client)
+    {
+        ClientDisconnected?.Invoke(this, new ClientConnectionEventArgs()
+        {
+            Client = client
+        });
+    }
+
     private bool IsSessionOver()
     {
         if (_sessionManager.CurrentSession.Configuration.Type != SessionType.Race)
@@ -116,7 +134,7 @@ public class ACServer : CriticalBackgroundService
     private void OnApplicationStopping()
     {
         Log.Information("Server shutting down");
-        _entryCarManager.BroadcastPacket(new ChatMessage { SessionId = 255, Message = "*** Server shutting down ***" });
+        BroadcastPacket(new ChatMessage { SessionId = 255, Message = "*** Server shutting down ***" });
 
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var tasks = new List<Task>();
@@ -156,17 +174,20 @@ public class ACServer : CriticalBackgroundService
         mainThread.Start();
     }
 
-    private void OnChanged(IBlacklistService sender, EventArgs args)
+    private void OnBlacklistChanged(IBlacklistService sender, EventArgs args)
     {
         _ = Task.Run(async () =>
         {
-            foreach (var client in _entryCarManager.ConnectedCars.Values.Select(c => c.Client))
+            foreach (EntryCarClient clientCar in _entryCarManager.ClientCars)
             {
-                if (client != null && await sender.IsBlacklistedAsync(client.Guid))
+                if (clientCar.Client == null)
+                    continue;
+
+                if (await sender.IsBlacklistedAsync(clientCar.Client.Guid))
                 {
-                    client.Logger.Information("{ClientName} was banned after reloading blacklist", client.Name);
-                    client.SendPacket(new KickCar { SessionId = client.SessionId, Reason = KickReason.VoteBlacklisted });
-                    _ = client.DisconnectAsync();
+                    clientCar.Logger.Information("{ClientName} was banned after reloading blacklist", clientCar.Client.Name);
+                    clientCar.Client.SendPacket(new KickCar { SessionId = clientCar.SessionId, Reason = KickReason.VoteBlacklisted });
+                    _ = clientCar.DisconnectClient();
                 }
             }
         });
@@ -177,11 +198,6 @@ public class ACServer : CriticalBackgroundService
         int failedUpdateLoops = 0;
         int sleepMs = 1000 / _configuration.Server.RefreshRateHz;
         long nextTick = _sessionManager.ServerTimeMilliseconds;
-        Dictionary<EntryCar, CountedArray<PositionUpdateOut>> positionUpdates = new();
-        foreach (var entryCar in _entryCarManager.EntryCars)
-        {
-            positionUpdates[entryCar] = new CountedArray<PositionUpdateOut>(_entryCarManager.EntryCars.Length);
-        }
 
         Log.Information("Starting update loop with an update rate of {RefreshRateHz}hz", _configuration.Server.RefreshRateHz);
 
@@ -198,81 +214,16 @@ public class ACServer : CriticalBackgroundService
                 {
                     Update?.Invoke(this, EventArgs.Empty);
 
-                    for (int i = 0; i < _entryCarManager.EntryCars.Length; i++)
-                    {
-                        var fromCar = _entryCarManager.EntryCars[i];
-                        var fromClient = fromCar.Client;
-                        if (fromClient != null && fromClient.HasSentFirstUpdate && (_sessionManager.ServerTimeMilliseconds - fromCar.LastPingTime) > 1000)
-                        {
-                            fromCar.CheckAfk();
-                            fromCar.LastPingTime = _sessionManager.ServerTimeMilliseconds;
-                            fromClient.SendPacketUdp(new PingUpdate((uint)fromCar.LastPingTime, fromCar.Ping));
-
-                            if (_sessionManager.ServerTimeMilliseconds - fromCar.LastPongTime > 15000)
-                            {
-                                fromClient.Logger.Information("{ClientName} has not sent a ping response for over 15 seconds", fromClient.Name);
-                                _ = fromClient.DisconnectAsync();
-                            }
-                        }
-
-                        if (fromCar.AiControlled || fromCar.HasUpdateToSend)
-                        {
-                            fromCar.HasUpdateToSend = false;
-
-                            for (int j = 0; j < _entryCarManager.EntryCars.Length; j++)
-                            {
-                                var toCar = _entryCarManager.EntryCars[j];
-                                var toClient = toCar.Client;
-                                if (toCar == fromCar 
-                                    || toClient == null || !toClient.HasSentFirstUpdate || toClient.UdpEndpoint == null
-                                    || !fromCar.GetPositionUpdateForCar(toCar, out var update)) continue;
-
-                                if (toClient.SupportsCSPCustomUpdate || fromCar.AiControlled)
-                                {
-                                    positionUpdates[toCar].Add(update);
-                                }
-                                else
-                                {
-                                    toClient.SendPacketUdp(in update);
-                                }
-                            }
-                        }
-                    }
-
-                    foreach (var (toCar, updates) in positionUpdates)
-                    {
-                        if (updates.Count == 0) continue;
-                            
-                        var toClient = toCar.Client;
-                        if (toClient != null)
-                        {
-                            const int chunkSize = 20;
-                            for (int i = 0; i < updates.Count; i += chunkSize)
-                            {
-                                if (toClient.SupportsCSPCustomUpdate)
-                                {
-                                    var packet = new CSPPositionUpdate(new ArraySegment<PositionUpdateOut>(updates.Array, i, Math.Min(chunkSize, updates.Count - i)));
-                                    toClient.SendPacketUdp(in packet);
-                                }
-                                else
-                                {
-                                    var packet = new BatchedPositionUpdate((uint)(_sessionManager.ServerTimeMilliseconds - toCar.TimeOffset), toCar.Ping,
-                                        new ArraySegment<PositionUpdateOut>(updates.Array, i, Math.Min(chunkSize, updates.Count - i)));
-                                    toClient.SendPacketUdp(in packet);
-                                }
-                            }
-                        }
-                            
-                        updates.Clear();
-                    }
-
+                    // Prepare and send the outgoing car updates
+                    _entryCarManager.Update();
+                    
                     if (IsSessionOver())
                     {
                         _sessionManager.NextSession();
                     }
                 }
 
-                if (_entryCarManager.ConnectedCars.Count > 0)
+                if (_entryCarManager.HasConnectedClients)
                 {
                     long tickDelta;
                     do
@@ -322,4 +273,101 @@ public class ACServer : CriticalBackgroundService
             }
         }
     }
+
+    // Public interface
+    public void BroadcastPacket<TPacket>(TPacket packet, ACTcpClient? sender = null) where TPacket : IOutgoingNetworkPacket
+    {
+        foreach (EntryCarClient car in _entryCarManager.ClientCars)
+        {
+            if (car.Client == null)
+                continue;
+
+            if (car.Client.InGame && car.Client != sender)
+                car.Client.SendPacket(packet);
+        }
+    }
+
+    public void BroadcastPacketUdp<TPacket>(in TPacket packet, ACTcpClient? sender = null, float? range = null, bool skipSender = true) where TPacket : IOutgoingNetworkPacket
+    {
+        foreach (EntryCarClient car in _entryCarManager.ClientCars)
+        {
+            if (car.Client == null)
+                continue;
+
+            if (skipSender && car.Client == sender) 
+                continue;
+
+            if (!range.HasValue || (sender?.ClientCar != null && sender.ClientCar.IsInRange(car.Status, range.Value)))
+                car.Client.SendPacketUdp(in packet);
+        }
+    }
+
+    public async Task KickAsync(ACTcpClient? client, string? reason = null, ACTcpClient? admin = null)
+    {
+        if (client == null)
+            return;
+
+        string? clientReason = reason != null ? $"You have been kicked for {reason}" : null;
+        string broadcastReason = reason != null ? $"{client.Name} has been kicked from the server for {reason}." : $"{client.Name} has been kicked from the server.";
+
+        await KickAsync(client, KickReason.Kicked, reason, clientReason, broadcastReason, admin);
+    }
+
+    public async Task BanAsync(ACTcpClient? client, string? reason = null, ACTcpClient? admin = null)
+    {
+        if (client == null) return;
+
+        string clientReason = reason != null ? $"You have been banned for {reason}" : "You have been banned from the server";
+        string broadcastReason = reason != null ? $"{client.Name} has been banned from the server for {reason}." : $"{client.Name} has been banned from the server.";
+
+        await KickAsync(client, KickReason.VoteBlacklisted, reason, clientReason, broadcastReason, admin);
+        await _blacklist.AddAsync(client.Guid);
+        if (client.OwnerGuid.HasValue && client.Guid != client.OwnerGuid)
+        {
+            await _blacklist.AddAsync(client.OwnerGuid.Value);
+        }
+    }
+
+    public async Task KickAsync(ACTcpClient? client, KickReason reason, string? auditReason = null, string? clientReason = null, string? broadcastReason = null, ACTcpClient? admin = null)
+    {
+        if (client is { IsDisconnectRequested: false })
+        {
+            if (broadcastReason != null)
+            {
+                BroadcastPacket(new ChatMessage { SessionId = 255, Message = broadcastReason });
+            }
+
+            if (clientReason != null)
+            {
+                client.SendPacket(new CSPKickBanMessageOverride { Message = clientReason });
+            }
+
+            client.SendPacket(new KickCar { SessionId = client.SessionId, Reason = reason });
+
+            ClientAuditEventArgs args = new ClientAuditEventArgs
+            {
+                Reason = reason,
+                ReasonStr = broadcastReason,
+                Admin = admin
+            };
+
+            if (reason is KickReason.Kicked or KickReason.VoteKicked)
+            {
+                client.Logger.Information("{ClientName} was kicked. Reason: {Reason}", client.Name, auditReason ?? "No reason given.");
+                client.NotifyClientKicked(args);
+                //ClientKicked?.Invoke(client, args);
+            }
+            else if (reason is KickReason.VoteBanned or KickReason.VoteBlacklisted)
+            {
+                client.Logger.Information("{ClientName} was banned. Reason: {Reason}", client.Name, auditReason ?? "No reason given.");
+                client.NotifyClientBanned(args); 
+                //ClientBanned?.Invoke(client, args);
+            }
+
+            await client.BeginDisconnectAsync();
+        }
+    }
+
+    public event EventHandler<IACServer, ClientConnectionEventArgs>? ClientConnected;
+    public event EventHandler<IACServer, ClientConnectionEventArgs>? ClientDisconnected;
 }

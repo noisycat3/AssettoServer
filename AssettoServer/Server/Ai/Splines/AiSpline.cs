@@ -27,7 +27,7 @@ public class AiSpline
     public AiSplineHeader Header { get; }
     public ReadOnlySpan<SplinePoint> Points => _pointsPointer.ToSpan(Header.NumPoints);
     public ReadOnlySpan<SplineJunction> Junctions => _junctionsPointer.ToSpan(Header.NumJunctions);
-    public SlowestAiStates SlowestAiStates { get; }
+    public SplinePerPointData SplinePerPointData { get; }
     public KDTree<int> KdTree { get; }
     public SplinePointOperations Operations => new(Points);
     
@@ -64,7 +64,7 @@ public class AiSpline
         _lanesOffset = offset;
         
         KdTree = new KDTree<int>(_treePointsOwner.Memory, _treeNodesOwner.Memory, Header.NumPoints);
-        SlowestAiStates = new SlowestAiStates(Header.NumPoints);
+        SplinePerPointData = new SplinePerPointData(Header.NumPoints);
     }
 
     public Span<int> GetLanes(int pointId)

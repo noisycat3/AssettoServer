@@ -7,11 +7,11 @@ namespace AssettoServer.Server.Weather.Implementation;
 
 public class WeatherFxV1Implementation : IWeatherImplementation
 {
-    private readonly EntryCarManager _entryCarManager;
+    private readonly ACServer _acServer;
 
-    public WeatherFxV1Implementation(EntryCarManager entryCarManager, CSPFeatureManager cspFeatureManager)
+    public WeatherFxV1Implementation(ACServer acServer, CSPFeatureManager cspFeatureManager)
     {
-        _entryCarManager = entryCarManager;
+        _acServer = acServer;
         cspFeatureManager.Add(new CSPFeature { Name = "WEATHERFX_V1", Mandatory = true });
     }
 
@@ -37,7 +37,7 @@ public class WeatherFxV1Implementation : IWeatherImplementation
 
         if (client == null)
         {
-            _entryCarManager.BroadcastPacketUdp(in newWeather);
+            _acServer.BroadcastPacketUdp(in newWeather);
         }
         else
         {

@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Server.UserGroup;
+using AssettoServer.Shared.Utils;
 using Serilog;
 
 namespace AssettoServer.Server.Admin;

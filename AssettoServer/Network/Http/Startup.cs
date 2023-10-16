@@ -45,11 +45,14 @@ public class Startup
     {
         builder.RegisterInstance(_configuration);
         builder.RegisterInstance(_loader);
+
         builder.RegisterModule(new WeatherModule(_configuration));
         builder.RegisterModule(new AiModule(_configuration));
+
         builder.RegisterType<HttpClient>().AsSelf();
         builder.RegisterType<ACTcpClient>().AsSelf();
-        builder.RegisterType<EntryCar>().AsSelf();
+        builder.RegisterType<EntryCarClient>().AsSelf();
+        builder.RegisterType<EntryCarAi>().AsSelf();
         builder.RegisterType<ACCommandContext>().AsSelf();
         builder.RegisterType<SessionState>().AsSelf();
         builder.RegisterType<ACClientTypeParser>().AsSelf();
@@ -86,11 +89,6 @@ public class Startup
         builder.RegisterType<HttpInfoCache>().AsSelf().As<IAssettoServerAutostart>().SingleInstance();
         builder.RegisterType<DefaultCMContentProvider>().As<ICMContentProvider>().SingleInstance();
 
-        if (_configuration.Extra.EnableLegacyPluginInterface)
-        {
-            builder.RegisterType<UdpPluginServer>().AsSelf().As<IAssettoServerAutostart>().SingleInstance();
-        }
-            
         if (_configuration.Extra.UseSteamAuth)
         {
             builder.RegisterType<SteamSlotFilter>().As<IOpenSlotFilter>();
@@ -104,7 +102,8 @@ public class Startup
 
         foreach (var plugin in _loader.LoadedPlugins)
         {
-            if (plugin.ConfigurationType != null) builder.RegisterType(plugin.ConfigurationType).AsSelf();
+            if (plugin.ConfigurationType != null) 
+                builder.RegisterType(plugin.ConfigurationType).AsSelf();
             builder.RegisterModule(plugin.Instance);
         }
 

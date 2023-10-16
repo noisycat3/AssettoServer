@@ -4,9 +4,9 @@ namespace AssettoServer.Shared.Network.Packets.Outgoing;
 
 public class CurrentSessionUpdate : IOutgoingNetworkPacket
 {
-    public Session? CurrentSession;
+    public ISessionConfig? CurrentSession;
     public float TrackGrip;
-    public IEnumerable<IEntryCar<IClient>>? Grid;
+    public IEnumerable<IEntryCar>? Grid;
     public long StartTime;
 
     public void ToWriter(ref PacketWriter writer)
@@ -22,7 +22,7 @@ public class CurrentSessionUpdate : IOutgoingNetworkPacket
         writer.Write((ushort)CurrentSession.Laps);
         writer.Write(TrackGrip);
 
-        foreach (var car in Grid)
+        foreach (IEntryCar car in Grid)
             writer.Write(car.SessionId);
 
         writer.Write(StartTime);

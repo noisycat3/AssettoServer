@@ -128,7 +128,7 @@ public class Steam : CriticalBackgroundService
                 return;
             }
             
-            client.Disconnecting += (_, _) =>
+            client.Disconnected += (_, _) =>
             {
                 try
                 {
@@ -145,12 +145,12 @@ public class Steam : CriticalBackgroundService
             {
                 if (_blacklistService.IsBlacklistedAsync(ownerSteamId).Result)
                 {
-                    client.Logger.Information("{ClientName} ({SteamId}) is using Steam family sharing and game owner {OwnerSteamId} is blacklisted", client.Name, playerSteamId, ownerSteamId);
+                    client.Logger.Information("{ClientName} ({OwnerGuid}) is using Steam family sharing and game owner {OwnerSteamId} is blacklisted", client.Name, playerSteamId, ownerSteamId);
                     taskCompletionSource.SetResult(false);
                     return;
                 }
 
-                client.Logger.Information("{ClientName} ({SteamId}) is using Steam family sharing, owner {OwnerSteamId}", client.Name, playerSteamId, ownerSteamId);
+                client.Logger.Information("{ClientName} ({OwnerGuid}) is using Steam family sharing, owner {OwnerSteamId}", client.Name, playerSteamId, ownerSteamId);
             }
 
             foreach (int appid in _configuration.Extra.ValidateDlcOwnership)

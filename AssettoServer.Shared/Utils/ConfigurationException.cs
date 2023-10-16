@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AssettoServer.Server.Configuration;
+﻿namespace AssettoServer.Shared.Utils;
 
 public class ConfigurationException : Exception
 {

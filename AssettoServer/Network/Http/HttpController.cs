@@ -62,7 +62,7 @@ public class HttpController : ControllerBase
         InfoResponse responseObj = new InfoResponse
         {
             Cars = _cache.Cars,
-            Clients = _entryCarManager.ConnectedCars.Count,
+            Clients = _entryCarManager.ConnectedClientCount,
             Country = _cache.Country,
             CPort = _configuration.Server.HttpPort,
             Durations = _cache.Durations,
@@ -124,7 +124,7 @@ public class HttpController : ControllerBase
         DetailResponse responseObj = new DetailResponse
         {
             Cars = _cache.Cars,
-            Clients = _entryCarManager.ConnectedCars.Count,
+            Clients = _entryCarManager.ConnectedClientCount,
             Country = _cache.Country,
             CPort = _configuration.Server.HttpPort,
             Durations = _cache.Durations,

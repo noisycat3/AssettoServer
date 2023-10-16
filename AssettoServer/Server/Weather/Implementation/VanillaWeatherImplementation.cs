@@ -7,14 +7,14 @@ namespace AssettoServer.Server.Weather.Implementation;
 
 public class VanillaWeatherImplementation : IWeatherImplementation
 {
-    private readonly EntryCarManager _entryCarManager;
+    private readonly ACServer _acServer;
     private readonly IWeatherTypeProvider _weatherTypeProvider;
     private WeatherUpdate? _lastWeather;
 
-    public VanillaWeatherImplementation(IWeatherTypeProvider weatherTypeProvider, EntryCarManager entryCarManager)
+    public VanillaWeatherImplementation(ACServer acServer, IWeatherTypeProvider weatherTypeProvider)
     {
+        _acServer = acServer;
         _weatherTypeProvider = weatherTypeProvider;
-        _entryCarManager = entryCarManager;
     }
     
     public void SendWeather(WeatherData weather, ZonedDateTime dateTime, ACTcpClient? client = null)
@@ -48,10 +48,10 @@ public class VanillaWeatherImplementation : IWeatherImplementation
                 || weatherUpdate.WindDirection != _lastWeather.WindDirection
                 || weatherUpdate.WindSpeed != _lastWeather.WindSpeed)
             {
-                _entryCarManager.BroadcastPacket(weatherUpdate);
+                _acServer.BroadcastPacket(weatherUpdate);
             }
 
-            _entryCarManager.BroadcastPacket(PrepareSunAngleUpdate(dateTime));
+            _acServer.BroadcastPacket(PrepareSunAngleUpdate(dateTime));
         }
         else
         {

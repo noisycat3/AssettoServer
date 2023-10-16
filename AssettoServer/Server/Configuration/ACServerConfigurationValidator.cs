@@ -24,9 +24,6 @@ public class ACServerConfigurationValidator : AbstractValidator<ACServerConfigur
                 aiParams.RuleFor(ai => ai.MinAiSafetyDistanceMeters).LessThanOrEqualTo(ai => ai.MaxAiSafetyDistanceMeters);
                 aiParams.RuleFor(ai => ai.MinSpawnProtectionTimeSeconds).LessThanOrEqualTo(ai => ai.MaxSpawnProtectionTimeSeconds);
                 aiParams.RuleFor(ai => ai.MinCollisionStopTimeSeconds).LessThanOrEqualTo(ai => ai.MaxCollisionStopTimeSeconds);
-                aiParams.RuleFor(ai => ai.MaxSpeedVariationPercent).InclusiveBetween(0, 1);
-                aiParams.RuleFor(ai => ai.DefaultAcceleration).GreaterThan(0);
-                aiParams.RuleFor(ai => ai.DefaultDeceleration).GreaterThan(0);
                 aiParams.RuleFor(ai => ai.NamePrefix).NotNull();
                 aiParams.RuleFor(ai => ai.IgnoreObstaclesAfterSeconds).GreaterThanOrEqualTo(0);
                 aiParams.RuleFor(ai => ai.HourlyTrafficDensity)

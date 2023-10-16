@@ -2,7 +2,7 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AssettoServer.Server;
+using AssettoServer.Shared.Model;
 using CommunityToolkit.Common.Deferred;
 
 namespace AssettoServer.Utils;

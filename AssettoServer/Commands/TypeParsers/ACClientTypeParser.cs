@@ -19,8 +19,9 @@ public class ACClientTypeParser : TypeParser<ACTcpClient>
     {
         if (context is ACCommandContext acContext)
         {
-            if (int.TryParse(value, out int result) && _entryCarManager.ConnectedCars.TryGetValue(result, out EntryCar? car) && car.Client != null)
-                return TypeParserResult<ACTcpClient>.Successful(car.Client);
+            //if (int.TryParse(value, out int result) && _entryCarManager.ConnectedCars.TryGetValue(result, out EntryCar? car) && car.Client != null)
+            if (int.TryParse(value, out int result) && _entryCarManager.EntryCars[result] is { Client: ACTcpClient clientById })
+                return TypeParserResult<ACTcpClient>.Successful(clientById);
 
             ACTcpClient? exactMatch = null;
             ACTcpClient? ignoreCaseMatch = null;
@@ -30,17 +31,18 @@ public class ACClientTypeParser : TypeParser<ACTcpClient>
             if (value.StartsWith("@"))
                 value = value.Substring(1);
 
-            foreach (EntryCar entryCar in _entryCarManager.EntryCars)
+            foreach (EntryCarClient clientCar in _entryCarManager.ClientCars)
             {
-                ACTcpClient? client = entryCar.Client;
-                if (client != null && client.Name != null)
+                // Client has a name and specific type
+                if (clientCar.Client is ACTcpClient { Name: { } } client)
                 {
                     if (client.Name == value)
                     {
                         exactMatch = client;
                         break;
                     }
-                    else if (client.Name.Equals(value, StringComparison.OrdinalIgnoreCase))
+
+                    if (client.Name.Equals(value, StringComparison.OrdinalIgnoreCase))
                         ignoreCaseMatch = client;
                     else if (client.Name.Contains(value) && (containsMatch == null || containsMatch.Name?.Length > client.Name.Length))
                         containsMatch = client;

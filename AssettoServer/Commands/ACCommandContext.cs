@@ -46,7 +46,7 @@ public sealed class ACCommandContext : CommandContext
     {
         Log.Information("Broadcast: {Message}", message);
         RconResponseBuilder?.AppendLine(message);
-        _entryCarManager.BroadcastPacket(new ChatMessage { SessionId = 255, Message = message });
+        Server.BroadcastPacket(new ChatMessage { SessionId = 255, Message = message });
     }
 
     internal void SendRconResponse()

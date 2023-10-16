@@ -1,13 +1,9 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Collections;
 using System.Reflection;
-using AssettoServer.Server.Configuration;
 using IniParser.Model;
 using Serilog;
 
-namespace AssettoServer.Utils;
+namespace AssettoServer.Shared.Utils;
 
 public static class IniDataExtensions
 {

@@ -28,11 +28,12 @@ public class AiTrafficModule : ACModuleBase
             Reply("AI disabled");
             return;
         }
-        
-        foreach (var aiCar in _entryCarManager.EntryCars.Where(car => car.AiControlled && car.Client == null))
-        {
-            aiCar.SetAiOverbooking(count);
-        }
+
+        // OLD AI
+        //foreach (var aiCar in _entryCarManager.EntryCars.Where(car => car.AiControlled && car.Client == null))
+        //{
+        //    aiCar.SetAiOverbooking(count);
+        //}
         Reply($"AI overbooking set to {count}");
     }
 }

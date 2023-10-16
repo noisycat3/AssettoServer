@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
 using AssettoServer.Network.Tcp;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Incoming;
 using AssettoServer.Shared.Network.Packets.Outgoing.Handshake;
 
@@ -14,7 +15,7 @@ public abstract class OpenSlotFilterBase : IOpenSlotFilter
         _nextFilter = next;
     }
 
-    public virtual bool IsSlotOpen(EntryCar entryCar, ulong guid)
+    public virtual bool IsSlotOpen(IEntryCar entryCar, ulong guid)
     {
         return _nextFilter?.IsSlotOpen(entryCar, guid) ?? true;
     }

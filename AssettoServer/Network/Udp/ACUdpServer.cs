@@ -12,6 +12,7 @@ using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets;
 using AssettoServer.Shared.Network.Packets.Incoming;
 using AssettoServer.Shared.Services;
+using AssettoServer.Shared.Utils;
 using AssettoServer.Utils;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -20,6 +21,7 @@ namespace AssettoServer.Network.Udp;
 
 public class ACUdpServer : CriticalBackgroundService
 {
+    private readonly ACServer _acServer;
     private readonly ACServerConfiguration _configuration;
     private readonly SessionManager _sessionManager;
     private readonly EntryCarManager _entryCarManager;
@@ -27,16 +29,18 @@ public class ACUdpServer : CriticalBackgroundService
     private readonly ushort _port;
     private readonly Socket _socket;
     
-    private readonly ConcurrentDictionary<SocketAddress, EntryCar> _endpointCars = new();
+    private readonly ConcurrentDictionary<SocketAddress, EntryCarClient> _endpointCars = new();
     private static readonly byte[] CarConnectResponse = { (byte)ACServerProtocol.CarConnect };
     private readonly byte[] _lobbyCheckResponse;
 
     public ACUdpServer(SessionManager sessionManager,
+        ACServer server,
         ACServerConfiguration configuration,
         EntryCarManager entryCarManager,
         IHostApplicationLifetime applicationLifetime,
         CSPClientMessageHandler clientMessageHandler) : base(applicationLifetime)
     {
+        _acServer = server;
         _sessionManager = sessionManager;
         _configuration = configuration;
         _entryCarManager = entryCarManager;
@@ -85,9 +89,9 @@ public class ACUdpServer : CriticalBackgroundService
     private void OnReceived(SocketAddress address, byte[] buffer, int size)
     {
         // moved to separate method because it always allocated a closure
-        void HighPingKickAsync(EntryCar car)
+        void HighPingKickAsync(EntryCarClient car)
         {
-            _ = Task.Run(() => _entryCarManager.KickAsync(car.Client, $"high ping ({car.Ping}ms)"));
+            _ = Task.Run(() => _acServer.KickAsync(car.Client as ACTcpClient, $"high ping ({car.Ping}ms)"));
         }
         
         try
@@ -99,14 +103,14 @@ public class ACUdpServer : CriticalBackgroundService
             if (packetId == ACServerProtocol.CarConnect)
             {
                 int sessionId = packetReader.Read<byte>();
-                if (_entryCarManager.ConnectedCars.TryGetValue(sessionId, out EntryCar? car) && car.Client != null)
+                if (_entryCarManager.EntryCars[sessionId] is EntryCarClient { Client: ACTcpClient client } clientCar)
                 {
                     var clonedAddress = address.Clone();
-                    if (car.Client.TryAssociateUdp(clonedAddress))
+                    if (client.TryAssociateUdp(clonedAddress))
                     {
-                        _endpointCars[clonedAddress] = car;
-                        car.Client.Disconnecting += OnClientDisconnecting;
-                        
+                        _endpointCars[clonedAddress] = clientCar;
+                        client.Disconnected += OnClientDisconnecting;
+
                         Send(address, CarConnectResponse, 0, CarConnectResponse.Length);
                     }
                 }
@@ -128,10 +132,11 @@ public class ACUdpServer : CriticalBackgroundService
                     Server.Steam.HandleIncomingPacket(data, remoteEp);
                 }
             }*/
-            else if (_endpointCars.TryGetValue(address, out var car))
+            else if (_endpointCars.TryGetValue(address, out EntryCarClient? car))
             {
-                var client = car.Client;
-                if (client == null) return;
+                ACTcpClient? client = car.Client as ACTcpClient;
+                if (client == null) 
+                    return;
                 
                 if (packetId == ACServerProtocol.SessionRequest)
                 {
@@ -149,22 +154,34 @@ public class ACUdpServer : CriticalBackgroundService
                     if (!client.HasSentFirstUpdate)
                         client.SendFirstUpdate();
 
-                    car.UpdatePosition(packetReader.Read<PositionUpdateIn>());
+                    car.UpdateClientPosition(packetReader.Read<PositionUpdateIn>());
                 }
                 else if (packetId == ACServerProtocol.PingPong)
                 {
                     long currentTime = _sessionManager.ServerTimeMilliseconds;
-                    car.Ping = (ushort)(currentTime - packetReader.Read<int>());
-                    car.TimeOffset = (int)currentTime - ((car.Ping / 2) + packetReader.Read<int>());
+                    ushort ping = (ushort)(currentTime - packetReader.Read<int>());
+                    int timeOffset = (int)currentTime - ((car.Ping / 2) + packetReader.Read<int>());
+
+                    car.UpdateTimingValues(ping, timeOffset); 
                     car.LastPongTime = currentTime;
 
                     if (car.Ping > _configuration.Extra.MaxPing)
                     {
-                        car.HighPingSeconds++;
-                        if (car.HighPingSeconds > _configuration.Extra.MaxPingSeconds)
-                            HighPingKickAsync(car);
+                        if (car.HighPingSecondsStart.HasValue)
+                        {
+                            long millisecondsSinceHighPing = currentTime - car.HighPingSecondsStart.Value;
+                            if (millisecondsSinceHighPing > (_configuration.Extra.MaxPingSeconds * 1000))
+                                HighPingKickAsync(car);
+                        }
+                        else
+                        {
+                            car.HighPingSecondsStart = currentTime;
+                        }
                     }
-                    else car.HighPingSeconds = 0;
+                    else
+                    {
+                        car.HighPingSecondsStart = null;
+                    }
                 }
                 else if (_configuration.Extra.EnableUdpClientMessages && packetId == ACServerProtocol.Extended)
                 {
@@ -182,11 +199,12 @@ public class ACUdpServer : CriticalBackgroundService
         }
     }
 
-    private void OnClientDisconnecting(ACTcpClient sender, EventArgs args)
+    private void OnClientDisconnecting(IClient sender, EventArgs args)
     {
-        if (sender.UdpEndpoint != null)
+        //if (sender.UdpEndpoint != null)
+        if (sender is ACTcpClient { UdpEndpoint: {} endpoint })
         {
-            _endpointCars.TryRemove(sender.UdpEndpoint, out _);
+            _endpointCars.TryRemove(endpoint, out _);
         }
     }
 }

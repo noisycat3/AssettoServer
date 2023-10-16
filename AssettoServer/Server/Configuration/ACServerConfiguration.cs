@@ -4,7 +4,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Http.Responses;
-using AssettoServer.Utils;
+using AssettoServer.Shared.Utils;
 using FluentValidation;
 using Newtonsoft.Json;
 using Serilog;

@@ -1,139 +1,91 @@
 ﻿using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AssettoServer.Network.Tcp;
 using AssettoServer.Server.Admin;
-using AssettoServer.Server.Blacklist;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Server.OpenSlotFilters;
-using AssettoServer.Shared.Network.Packets.Incoming;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Outgoing;
-using AssettoServer.Shared.Network.Packets.Shared;
+using AssettoServer.Shared.Utils;
 using Serilog;
 
 namespace AssettoServer.Server;
 
 public class EntryCarManager
 {
-    public EntryCar[] EntryCars { get; private set; } = Array.Empty<EntryCar>();
-    internal ConcurrentDictionary<int, EntryCar> ConnectedCars { get; } = new();
+    // List of car slots on the server. Multiple AI instances can share one EntryCarAi slot.
+    public EntryCarBase[] EntryCars { get; private set; } = Array.Empty<EntryCarBase>();
+    public int ConnectedClientCount => ClientCars.Count(c => c.Client != null);
+    public bool HasConnectedClients => EntryCars.Any(c => (c is EntryCarClient { Client: { } }));
 
+    // Helper to get all clients
+    public IEnumerable<EntryCarClient> ClientCars => EntryCars.OfType<EntryCarClient>();
+
+    // Helper to get all ai cars (each can have multiple instances)
+    public IEnumerable<EntryCarAi> AiCars => EntryCars.OfType<EntryCarAi>();
+    
     private readonly ACServerConfiguration _configuration;
-    private readonly IBlacklistService _blacklist;
-    private readonly EntryCar.Factory _entryCarFactory;
     private readonly IAdminService _adminService;
+    private readonly SessionManager _sessionManager;
     private readonly SemaphoreSlim _connectSemaphore = new(1, 1);
     private readonly Lazy<OpenSlotFilterChain> _openSlotFilterChain;
 
-    /// <summary>
-    /// Fires when a client has secured a slot and established a TCP connection.
-    /// </summary>
-    public event EventHandler<ACTcpClient, EventArgs>? ClientConnected;
-    
-    /// <summary>
-    /// Fires when a client has been kicked.
-    /// </summary>
-    public event EventHandler<ACTcpClient, ClientAuditEventArgs>? ClientKicked;
-        
-    /// <summary>
-    /// Fires when a client has been banned.
-    /// </summary>
-    public event EventHandler<ACTcpClient, ClientAuditEventArgs>? ClientBanned;
-    
-    /// <summary>
-    /// Fires when a player has disconnected.
-    /// </summary>
-    public event EventHandler<ACTcpClient, EventArgs>? ClientDisconnected;
+    private readonly EntryCarClient.Factory _factoryEntryCarClient;
+    private readonly EntryCarAi.Factory _factoryEntryCarAi;
 
-    public EntryCarManager(ACServerConfiguration configuration, EntryCar.Factory entryCarFactory, IBlacklistService blacklist, IAdminService adminService, Lazy<OpenSlotFilterChain> openSlotFilterChain)
+    // Internal data
+    private struct CarStatusUpdate
+    {
+        public byte SessionId;
+        public ushort Ping;
+        public int TimeOffset;
+        public CarStatus Status;
+    }
+
+    private readonly CountedArray<CarStatusUpdate>[] _statusUpdates;
+
+    public EntryCarManager(ACServerConfiguration configuration, IAdminService adminService, SessionManager sessionManager,
+        Lazy<OpenSlotFilterChain> openSlotFilterChain, EntryCarClient.Factory factoryEntryCarClient, EntryCarAi.Factory factoryEntryCarAi)
     {
         _configuration = configuration;
-        _entryCarFactory = entryCarFactory;
-        _blacklist = blacklist;
         _adminService = adminService;
+        _sessionManager = sessionManager;
         _openSlotFilterChain = openSlotFilterChain;
+
+        _factoryEntryCarClient = factoryEntryCarClient;
+        _factoryEntryCarAi = factoryEntryCarAi;
+
+        // N^2 array of position updates - around 3MB with 200 cars. We good.
+        int maxCars = configuration.EntryList.Cars.Count;
+        _statusUpdates = new CountedArray<CarStatusUpdate>[maxCars];
+        for (int i = 0; i < maxCars; i++)
+            _statusUpdates[i] = new CountedArray<CarStatusUpdate>(maxCars);
     }
 
-    public async Task KickAsync(ACTcpClient? client, string? reason = null, ACTcpClient? admin = null)
-    {
-        if (client == null) return;
-        
-        string? clientReason = reason != null ? $"You have been kicked for {reason}" : null;
-        string broadcastReason = reason != null ? $"{client.Name} has been kicked from the server for {reason}." : $"{client.Name} has been kicked from the server.";
-
-        await KickAsync(client, KickReason.Kicked, reason, clientReason, broadcastReason, admin);
-    }
-    
-    public async Task BanAsync(ACTcpClient? client, string? reason = null, ACTcpClient? admin = null)
-    {
-        if (client == null) return;
-        
-        string clientReason = reason != null ? $"You have been banned for {reason}" : "You have been banned from the server";
-        string broadcastReason = reason != null ? $"{client.Name} has been banned from the server for {reason}." : $"{client.Name} has been banned from the server.";
-
-        await KickAsync(client, KickReason.VoteBlacklisted, reason, clientReason, broadcastReason, admin);
-        await _blacklist.AddAsync(client.Guid);
-        if (client.OwnerGuid.HasValue && client.Guid != client.OwnerGuid)
-        {
-            await _blacklist.AddAsync(client.OwnerGuid.Value);
-        }
-    }
-
-    public async Task KickAsync(ACTcpClient? client, KickReason reason, string? auditReason = null, string? clientReason = null, string? broadcastReason = null, ACTcpClient? admin = null)
-    {
-        if (client != null && !client.IsDisconnectRequested)
-        {
-            if (broadcastReason != null)
-            {
-                BroadcastPacket(new ChatMessage { SessionId = 255, Message = broadcastReason });
-            }
-
-            if (clientReason != null)
-            {
-                client.SendPacket(new CSPKickBanMessageOverride { Message = clientReason });
-            }
-            
-            client.SendPacket(new KickCar { SessionId = client.SessionId, Reason = reason });
-            
-            var args = new ClientAuditEventArgs
-            {
-                Reason = reason,
-                ReasonStr = broadcastReason,
-                Admin = admin
-            };
-            if (reason is KickReason.Kicked or KickReason.VoteKicked)
-            {
-                client.Logger.Information("{ClientName} was kicked. Reason: {Reason}", client.Name, auditReason ?? "No reason given.");
-                ClientKicked?.Invoke(client, args);
-            }
-            else if (reason is KickReason.VoteBanned or KickReason.VoteBlacklisted)
-            {
-                client.Logger.Information("{ClientName} was banned. Reason: {Reason}", client.Name, auditReason ?? "No reason given.");
-                ClientBanned?.Invoke(client, args);
-            }
-
-            await client.DisconnectAsync();
-        }
-    }
-
-    internal async Task DisconnectClientAsync(ACTcpClient client)
+    internal async Task HandleClientDisconnected(ACTcpClient client)
     {
         try
         {
             await _connectSemaphore.WaitAsync();
-            if (client.IsConnected && client.EntryCar.Client == client && ConnectedCars.TryRemove(client.SessionId, out _))
+            if (client.IsConnected)
             {
+                if (client.ClientCar != EntryCars[client.SessionId])
+                    client.Logger.Warning("{ClientName} has bad car reference!", client.Name);
+
+                if (EntryCars[client.SessionId].Client == client && client.ClientCar is { } c)
+                {
+                    if (c.ClearClient(client))
+                        c.ResetCarState();
+                }
+                else
+                {
+                    client.Logger.Error("{ClientName} is not registered in the client database!", client.Name);
+                }
+
                 client.Logger.Information("{ClientName} has disconnected", client.Name);
-                client.EntryCar.Client = null;
-                client.IsConnected = false;
-
-                if (client.HasPassedChecksum)
-                    BroadcastPacket(new CarDisconnected { SessionId = client.SessionId });
-
-                client.EntryCar.Reset();
-                ClientDisconnected?.Invoke(client, EventArgs.Empty);
             }
         }
         catch (Exception ex)
@@ -146,63 +98,35 @@ public class EntryCarManager
         }
     }
 
-    public void BroadcastPacket<TPacket>(TPacket packet, ACTcpClient? sender = null) where TPacket : IOutgoingNetworkPacket
-    {
-        foreach (var car in EntryCars)
-        {
-            if (car.Client is { HasSentFirstUpdate: true } && car.Client != sender)
-            {
-                car.Client?.SendPacket(packet);
-            }
-        }
-    }
-        
-    public void BroadcastPacketUdp<TPacket>(in TPacket packet, ACTcpClient? sender = null, float? range = null, bool skipSender = true) where TPacket : IOutgoingNetworkPacket
-    {
-        foreach (var car in EntryCars)
-        {
-            if (car.Client is { HasSentFirstUpdate: true, UdpEndpoint: not null } 
-                && (!skipSender || car.Client != sender)
-                && (!range.HasValue || (sender != null && sender.EntryCar.IsInRange(car, range.Value))))
-            {
-                car.Client?.SendPacketUdp(in packet);
-            }
-        }
-    }
-
-    internal async Task<bool> TrySecureSlotAsync(ACTcpClient client, HandshakeRequest handshakeRequest)
+    internal async Task<bool> TrySecureSlotAsync(ACTcpClient client, string requestedModel)
     {
         try
         {
             await _connectSemaphore.WaitAsync();
 
-            if (ConnectedCars.Count >= _configuration.Server.MaxClients)
+            EntryCarClient? bestCarForClient = null;
+            foreach (EntryCarClient clientCar in ClientCars)
+            {
+                if (clientCar.Model != requestedModel || clientCar.Client != null)
+                    continue;
+
+                bool isAdmin = await _adminService.IsAdminAsync(client.Guid);
+                if (!isAdmin && !_openSlotFilterChain.Value.IsSlotOpen(clientCar, client.Guid))
+                    continue;
+
+                bestCarForClient = clientCar;
+                break;
+            }
+
+            // Fail if we didn't find a suitable car
+            if (bestCarForClient == null)
                 return false;
             
-            for (int i = 0; i < EntryCars.Length; i++)
-            {
-                EntryCar entryCar = EntryCars[i];
+            bestCarForClient.AssignClient(client);
+            client.ClientCar = bestCarForClient;
+            client.SessionId = bestCarForClient.SessionId;
 
-                bool isAdmin = await _adminService.IsAdminAsync(handshakeRequest.Guid);
-
-                if (entryCar.Client == null
-                    && handshakeRequest.RequestedCar == entryCar.Model
-                    && (isAdmin || _openSlotFilterChain.Value.IsSlotOpen(entryCar, handshakeRequest.Guid)))
-                {
-                    entryCar.Reset();
-                    entryCar.Client = client;
-                    client.EntryCar = entryCar;
-                    client.SessionId = entryCar.SessionId;
-                    client.IsConnected = true;
-                    client.IsAdministrator = isAdmin;
-                    client.Guid = handshakeRequest.Guid;
-
-                    ConnectedCars[client.SessionId] = entryCar;
-
-                    ClientConnected?.Invoke(client, EventArgs.Empty);
-                    return true;
-                }
-            }
+            return true;
         }
         catch (Exception ex)
         {
@@ -218,28 +142,146 @@ public class EntryCarManager
 
     internal void Initialize()
     {
-        EntryCars = new EntryCar[Math.Min(_configuration.Server.MaxClients, _configuration.EntryList.Cars.Count)];
+        // OLD AI: Setup EntryCar array
+        EntryCars = new EntryCarBase[_configuration.EntryList.Cars.Count];
         Log.Information("Loaded {Count} cars", EntryCars.Length);
+
+        bool isAiEnabled = _configuration.Extra.EnableAi;
         for (int i = 0; i < EntryCars.Length; i++)
         {
             var entry = _configuration.EntryList.Cars[i];
             var driverOptions = CSPDriverOptions.Parse(entry.Skin);
-            var aiMode = _configuration.Extra.EnableAi ? entry.AiMode : AiMode.None;
 
-            EntryCars[i] = _entryCarFactory(entry.Model, entry.Skin, (byte)i);
-            EntryCars[i].SpectatorMode = entry.SpectatorMode;
-            EntryCars[i].Ballast = entry.Ballast;
-            EntryCars[i].Restrictor = entry.Restrictor;
-            EntryCars[i].DriverOptionsFlags = driverOptions;
-            EntryCars[i].AiMode = aiMode;
-            EntryCars[i].AiEnableColorChanges = driverOptions.HasFlag(DriverOptionsFlags.AllowColorChange);
-            EntryCars[i].AiControlled = aiMode != AiMode.None;
-            EntryCars[i].NetworkDistanceSquared = MathF.Pow(_configuration.Extra.NetworkBubbleDistance, 2);
-            EntryCars[i].OutsideNetworkBubbleUpdateRateMs = 1000 / _configuration.Extra.OutsideNetworkBubbleRefreshRateHz;
-            if (!string.IsNullOrWhiteSpace(entry.Guid))
+            bool isAiCarEntry = false;
+            if (entry.AiEnable)
             {
-                EntryCars[i].AllowedGuids = entry.Guid.Split(';').Select(ulong.Parse).ToList();
+                if (isAiEnabled)
+                    isAiCarEntry = true;
+                else
+                    Log.Logger.Warning("Ai enabled on entry {i}, but disabled in config! AI won't be enabled!", i);
+            }
+
+            EntryCarBase car;
+            if (isAiCarEntry)
+            {
+                EntryCarAi aiCar = _factoryEntryCarAi.Invoke((byte)i);
+                car = aiCar;
+            }
+            else
+            {
+                EntryCarClient clientCar = _factoryEntryCarClient.Invoke((byte)i);
+                if (!string.IsNullOrWhiteSpace(entry.Guid))
+                {
+                    clientCar.AllowedGuids = entry.Guid.Split(';').Select(ulong.Parse).ToList();
+                }
+                car = clientCar;
+            }
+
+            car.Ballast = entry.Ballast;
+            car.Restrictor = entry.Restrictor;
+            car.DriverOptionsFlags = driverOptions;
+            EntryCars[i] = car;
+        }
+    }
+
+    internal void Update()
+    {
+        // Update all cars
+        foreach (EntryCarBase car in EntryCars)
+            car.UpdateCar();
+
+        // Clear old car data
+        foreach (CountedArray<CarStatusUpdate> updateList in _statusUpdates)
+            updateList.Clear();
+
+        // Prepare car data to send
+        foreach (EntryCarClient clientCar in ClientCars)
+        {
+            if (clientCar.Client == null) 
+                continue;
+
+            IClient client = clientCar.Client;
+            foreach (EntryCarBase otherCar in EntryCars)
+            {
+                //if (otherCar.WantSendUpdate)
+                if (!client.InGame || !client.IsUdpReady)
+                    continue;
+
+                CarStatus? status = otherCar.GetPositionUpdateForClient(clientCar);
+                if (status == null)
+                    continue;
+
+                // Register the update
+                _statusUpdates[otherCar.SessionId].Add(new CarStatusUpdate()
+                {
+                    SessionId = otherCar.SessionId,
+                    Ping = otherCar.Ping,
+                    TimeOffset = otherCar.TimeOffset,
+                    Status = status,
+                });
             }
         }
+        
+        // Now send all the updates through the server in an async manner
+        for (int updateListIndex = 0; updateListIndex < _statusUpdates.Length; updateListIndex++)
+        {
+            if (_statusUpdates[updateListIndex].Count == 0)
+                continue;
+
+            byte sessionId = (byte)updateListIndex;
+            long timeMs = _sessionManager.ServerTimeMilliseconds;
+            _ = Task.Run(() =>
+            {
+                // Client still valid
+                EntryCarBase baseCar = EntryCars[sessionId];
+                if ((baseCar.Client is not ACTcpClient { ClientCar: { } clientCar } client) || (clientCar != baseCar))
+                    return;
+
+                CountedArray<CarStatusUpdate> updateList = _statusUpdates[sessionId];
+                PositionUpdateOut[] packetArray = updateList
+                    .Select(u => Private_MakePositionUpdateFromCarState(u.SessionId, u.Ping, u.TimeOffset, u.Status))
+                    .ToArray();
+
+                const int chunkSize = 20;
+                if (client.SupportsCSPCustomUpdate)
+                {
+                    for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
+                    {
+                        client.SendPacketUdp(new CSPPositionUpdate(
+                            new ArraySegment<PositionUpdateOut>(packetArray, packetIndex, Math.Min(chunkSize, packetArray.Length - packetIndex))));
+                    }
+                }
+                else
+                {
+                    for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
+                    {
+                        client.SendPacketUdp(new BatchedPositionUpdate((uint)(timeMs - clientCar.TimeOffset), clientCar.Ping,
+                            new ArraySegment<PositionUpdateOut>(packetArray, packetIndex, Math.Min(chunkSize, packetArray.Length - packetIndex))));
+                    }
+                }
+            });
+        }
+    }
+
+    private static PositionUpdateOut Private_MakePositionUpdateFromCarState(byte sessionId, ushort ping, int timeOffset, CarStatus status)
+    {
+        return new PositionUpdateOut(sessionId,
+            status.PakSequenceId,
+            (uint)(status.Timestamp - timeOffset),
+            ping,
+            status.Position,
+            status.Rotation,
+            status.Velocity,
+            status.TyreAngularSpeed[0],
+            status.TyreAngularSpeed[1],
+            status.TyreAngularSpeed[2],
+            status.TyreAngularSpeed[3],
+            status.SteerAngle,
+            status.WheelAngle,
+            status.EngineRpm,
+            status.Gear,
+            status.StatusFlag,
+            status.PerformanceDelta,
+            status.Gas);
     }
 }

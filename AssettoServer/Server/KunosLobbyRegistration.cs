@@ -122,7 +122,7 @@ public class KunosLobbyRegistration : CriticalBackgroundService
         queryParams["session"] = ((int)_sessionManager.CurrentSession.Configuration.Type).ToString();
         queryParams["timeleft"] = (_sessionManager.CurrentSession.TimeLeftMilliseconds / 1000).ToString();
         queryParams["port"] = _configuration.Server.UdpPort.ToString();
-        queryParams["clients"] = _entryCarManager.ConnectedCars.Count.ToString();
+        queryParams["clients"] = _entryCarManager.ConnectedClientCount.ToString();
         queryParams["track"] = _configuration.FullTrackName;
         queryParams["pickup"] = "1";
         builder.Query = queryParams.ToString();

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using AssettoServer.Shared.Model;
 
 namespace AssettoServer.Server.Blacklist;
 

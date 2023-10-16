@@ -1,6 +1,6 @@
 ﻿using System.Net;
 
-namespace AssettoServer.Utils;
+namespace AssettoServer.Shared.Utils;
 
 public static class SocketAddressExtensions
 {

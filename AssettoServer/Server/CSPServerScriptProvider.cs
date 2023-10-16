@@ -20,7 +20,7 @@ public class CSPServerScriptProvider
     {
         bool debug = false;
         #if DEBUG
-        debug = true;
+        //debug = true;
         #endif
 
         var data = new IniData();

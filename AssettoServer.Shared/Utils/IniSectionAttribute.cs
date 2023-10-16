@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace AssettoServer.Utils;
+﻿namespace AssettoServer.Shared.Utils;
 
 [AttributeUsage(AttributeTargets.Property)]
 public class IniSectionAttribute : Attribute

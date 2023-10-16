@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Hashing;
 using System.Linq;
 using AssettoServer.Server.Configuration;
+using AssettoServer.Shared.Utils;
 using Serilog;
 using SerilogTimings;
 

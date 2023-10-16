@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AssettoServer.Network.Tcp;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Incoming;
 using AssettoServer.Shared.Network.Packets.Outgoing.Handshake;
 
@@ -25,7 +26,7 @@ public class OpenSlotFilterChain
         if (_first == null) throw new InvalidOperationException("No open slot filters set");
     }
     
-    public bool IsSlotOpen(EntryCar entryCar, ulong guid)
+    public bool IsSlotOpen(IEntryCar entryCar, ulong guid)
     {
         return _first.IsSlotOpen(entryCar, guid);
     }

@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using AssettoServer.Commands;
 using AssettoServer.Network.Udp;
 using AssettoServer.Server;
 using AssettoServer.Server.Blacklist;
@@ -23,7 +24,6 @@ using AssettoServer.Shared.Network.Packets.Outgoing;
 using AssettoServer.Shared.Network.Packets.Outgoing.Handshake;
 using AssettoServer.Shared.Network.Packets.Shared;
 using AssettoServer.Shared.Weather;
-using AssettoServer.Utils;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -34,16 +34,22 @@ public class ACTcpClient : IClient
 {
     private ACUdpServer UdpServer { get; }
     public ILogger Logger { get; }
+
     public byte SessionId { get; set; }
+    public bool InGame => (HasSentFirstUpdate && !IsDisconnectRequested);
+    public bool IsUdpReady => (UdpEndpoint != null);
+    public bool IsDisconnectRequested => (_disconnectRequested == 1);
+
     public string? Name { get; set; }
     public string? Team { get; private set; }
     public string? NationCode { get; private set; }
+
     public bool IsAdministrator { get; internal set; }
     public ulong Guid { get; internal set; }
     public string HashedGuid { get; private set; } = "";
     public ulong? OwnerGuid { get; internal set; }
-    public EntryCar EntryCar { get; internal set; } = null!;
-    public bool IsDisconnectRequested => _disconnectRequested == 1;
+    public EntryCarClient? ClientCar { get; internal set; }
+
     [MemberNotNullWhen(true, nameof(Name), nameof(Team), nameof(NationCode))]
     public bool HasSentFirstUpdate { get; private set; }
     public bool HasReceivedFirstPositionUpdate { get; private set; }
@@ -68,8 +74,9 @@ public class ACTcpClient : IClient
     private CancellationTokenSource DisconnectTokenSource { get; }
     private Task SendLoopTask { get; set; } = null!;
     private long LastChatTime { get; set; }
-    private int _disconnectRequested = 0;
-        
+    private int _disconnectRequested;
+    
+    private readonly ACServer _acServer;
     private readonly WeatherManager _weatherManager;
     private readonly SessionManager _sessionManager;
     private readonly EntryCarManager _entryCarManager;
@@ -80,47 +87,7 @@ public class ACTcpClient : IClient
     private readonly CSPServerExtraOptions _cspServerExtraOptions;
     private readonly OpenSlotFilterChain _openSlotFilter;
     private readonly CSPClientMessageHandler _clientMessageHandler;
-
-    /// <summary>
-    /// Fires when a client passed the checksum checks. This does not mean that the player has finished loading, use ClientFirstUpdateSent for that.
-    /// </summary>
-    public event EventHandler<ACTcpClient, EventArgs>? ChecksumPassed;
-        
-    /// <summary>
-    /// Fires when a client failed the checksum check.
-    /// </summary>
-    public event EventHandler<ACTcpClient, EventArgs>? ChecksumFailed;
-        
-    /// <summary>
-    /// Fires when a client has sent a chat message. Set ChatEventArgs.Cancel = true to stop it from being broadcast to other players.
-    /// </summary>
-    public event EventHandler<ACTcpClient, ChatMessageEventArgs>? ChatMessageReceived;
-        
-    /// <summary>
-    /// Fires when a player has started disconnecting.
-    /// </summary>
-    public event EventHandler<ACTcpClient, EventArgs>? Disconnecting;
-
-    /// <summary>
-    ///  Fires when a slot has been secured for a player and the handshake response is about to be sent.
-    /// </summary>
-    public event EventHandler<ACTcpClient, HandshakeAcceptedEventArgs> HandshakeAccepted = null!;
-
-    /// <summary>
-    /// Fires when a client has sent the first position update and is visible to other players.
-    /// </summary>
-    public event EventHandler<ACTcpClient, EventArgs>? FirstUpdateSent;
-
-    /// <summary>
-    /// Fires when a client collided with something. TargetCar will be null for environment collisions.
-    /// There are up to 5 seconds delay before a collision is reported to the server.
-    /// </summary>
-    public event EventHandler<ACTcpClient, CollisionEventArgs>? Collision;
-
-    /// <summary>
-    /// Fires when a client has completed a lap
-    /// </summary>
-    public event EventHandler<ACTcpClient, LapCompletedEventArgs>? LapCompleted; 
+    private readonly ChatService _chatService;
 
     public class ACTcpClientLogEventEnricher : ILogEventEnricher
     {
@@ -146,6 +113,7 @@ public class ACTcpClient : IClient
     }
 
     public ACTcpClient(
+        ACServer acServer,
         ACUdpServer udpServer, 
         TcpClient tcpClient,
         SessionManager sessionManager,
@@ -157,8 +125,11 @@ public class ACTcpClient : IClient
         CSPFeatureManager cspFeatureManager,
         CSPServerExtraOptions cspServerExtraOptions,
         OpenSlotFilterChain openSlotFilter, 
-        CSPClientMessageHandler clientMessageHandler)
+        CSPClientMessageHandler clientMessageHandler,
+        ChatService chatService)
     {
+        _acServer = acServer;
+
         UdpServer = udpServer;
         Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -177,6 +148,7 @@ public class ACTcpClient : IClient
         _cspServerExtraOptions = cspServerExtraOptions;
         _openSlotFilter = openSlotFilter;
         _clientMessageHandler = clientMessageHandler;
+        _chatService = chatService;
 
         tcpClient.ReceiveTimeout = (int)TimeSpan.FromMinutes(5).TotalMilliseconds;
         tcpClient.SendTimeout = (int)TimeSpan.FromSeconds(30).TotalMilliseconds;
@@ -206,7 +178,7 @@ public class ACTcpClient : IClient
             if (!OutgoingPacketChannel.Writer.TryWrite(packet) && !(packet is SunAngleUpdate) && !IsDisconnectRequested)
             {
                 Logger.Warning("Cannot write packet to TCP packet queue for {ClientName}, disconnecting", Name);
-                _ = DisconnectAsync();
+                _ = BeginDisconnectAsync();
             }
         }
         catch (Exception ex)
@@ -215,7 +187,7 @@ public class ACTcpClient : IClient
         }
     }
 
-    internal void SendPacketUdp<TPacket>(in TPacket packet) where TPacket : IOutgoingNetworkPacket
+    public void SendPacketUdp<TPacket>(in TPacket packet) where TPacket : IOutgoingNetworkPacket
     {
         if (UdpEndpoint == null) return;
         
@@ -230,9 +202,22 @@ public class ACTcpClient : IClient
         catch (Exception ex)
         {
             Logger.Error(ex, "Error sending {PacketName} to {ClientName}", typeof(TPacket).Name, Name);
-            _ = DisconnectAsync();
+            _ = BeginDisconnectAsync();
         }
     }
+
+    public event EventHandler<IClient, HandshakeAcceptedEventArgs>? HandshakeAccepted;
+    public event EventHandler<IClient, ClientChecksumResultEventArgs>? ChecksumCompleted;
+    public event EventHandler<IClient, EventArgs>? GameLoaded;
+    public event EventHandler<IClient, ClientAuditEventArgs>? Kicked;
+    public event EventHandler<IClient, ClientAuditEventArgs>? Banned;
+    public event EventHandler<IClient, EventArgs>? Disconnected;
+    public event EventHandler<IClient, ChatMessageEventArgs>? ChatMessageEvent;
+    public event EventHandler<IClient, ChatMessageEventArgs>? ChatRawEvent;
+    public event EventHandler<IClient, LapCompletedEventArgs>? LapCompleted;
+
+    internal void NotifyClientKicked(ClientAuditEventArgs args) => Kicked?.Invoke(this, args);
+    internal void NotifyClientBanned(ClientAuditEventArgs args) => Banned?.Invoke(this, args);
 
     private async Task SendLoopAsync()
     {
@@ -262,7 +247,7 @@ public class ACTcpClient : IClient
         catch (Exception ex)
         {
             Logger.Error(ex, "Error sending TCP packet to {ClientName}", Name);
-            _ = DisconnectAsync();
+            _ = BeginDisconnectAsync();
         }
     }
 
@@ -329,24 +314,28 @@ public class ACTcpClient : IClient
                         SendPacket(new AuthFailedResponse("Missing CSP features. Please update CSP and/or Content Manager."));
                     else if ((response = await _openSlotFilter.ShouldAcceptConnectionAsync(this, handshakeRequest)).HasValue)
                         SendPacket(response.Value);
-                    else if (!await _entryCarManager.TrySecureSlotAsync(this, handshakeRequest))
+                    else if (!await _entryCarManager.TrySecureSlotAsync(this, handshakeRequest.RequestedCar))
                         SendPacket(new NoSlotsAvailableResponse());
                     else
                     {
-                        if (EntryCar == null)
+                        if (ClientCar == null)
                             throw new InvalidOperationException("No EntryCar set even though handshake started");
 
-                        EntryCar.SetActive();
+                        ClientCar.UpdateActiveTime();
                         SupportsCSPCustomUpdate = _configuration.Extra.EnableCustomUpdate && cspFeatures.Contains("CUSTOM_UPDATE");
 
+                        // OLD AI: Despawn AI instances when someone connects
                         // Gracefully despawn AI cars
-                        EntryCar.SetAiOverbooking(0);
+                        //EntryCar.SetAiOverbooking(0);
 
                         if (handshakeRequest.Password == _configuration.Server.AdminPassword)
                             IsAdministrator = true;
 
+                        // From this point onward, the client is considered to be connected.
+                        IsConnected = true;
+                        _acServer.NotifyClientConnected(this);
                         Logger.Information("{ClientName} ({ClientSteamId}, {SessionId} ({CarModel}-{CarSkin})) has connected", 
-                            Name, Guid, SessionId, EntryCar.Model, EntryCar.Skin);
+                            Name, Guid, SessionId, ClientCar.Model, ClientCar.Skin);
 
                         var cfg = _configuration.Server;
                         HandshakeResponse handshakeResponse = new HandshakeResponse
@@ -356,8 +345,8 @@ public class ACTcpClient : IClient
                             AllowedTyresOutCount = cfg.AllowedTyresOutCount,
                             AllowTyreBlankets = cfg.AllowTyreBlankets,
                             AutoClutchAllowed = cfg.AutoClutchAllowed,
-                            CarModel = EntryCar.Model,
-                            CarSkin = EntryCar.Skin,
+                            CarModel = ClientCar.Model,
+                            CarSkin = ClientCar.Skin,
                             FuelConsumptionRate = cfg.FuelConsumptionRate,
                             HasExtraLap = cfg.HasExtraLap,
                             InvertedGridPositions = cfg.InvertedGridPositions,
@@ -392,22 +381,20 @@ public class ACTcpClient : IClient
                             MaxContactsPerKm = cfg.MaxContactsPerKm
                         };
 
-                        var args = new HandshakeAcceptedEventArgs
+                        HandshakeAccepted?.Invoke(this, new HandshakeAcceptedEventArgs()
                         {
                             HandshakeResponse = handshakeResponse
-                        };
-                        
-                        await HandshakeAccepted.InvokeAsync(this, args);
+                        });
 
                         HasStartedHandshake = true;
                         SendPacket(handshakeResponse);
 
                         _ = Task.Delay(TimeSpan.FromMinutes(_configuration.Extra.PlayerLoadingTimeoutMinutes)).ContinueWith(async _ =>
                         {
-                            if (EntryCar.Client == this && IsConnected && !HasSentFirstUpdate)
+                            if ((ClientCar.Client == this) && IsConnected && !HasSentFirstUpdate)
                             {
                                 Logger.Information("{ClientName} has taken too long to spawn in and will be disconnected", Name);
-                                await DisconnectAsync();
+                                await BeginDisconnectAsync();
                             }
                         });
                     }
@@ -455,8 +442,6 @@ public class ACTcpClient : IClient
                             else if (extendedId == (byte)CSPMessageTypeTcp.ClientMessage)
                                 _clientMessageHandler.OnCSPClientMessageTcp(this, reader);
                             break;
-                        default:
-                            break;
                     }
                 }
             }
@@ -469,7 +454,7 @@ public class ACTcpClient : IClient
         }
         finally
         {
-            await DisconnectAsync();
+            await BeginDisconnectAsync();
         }
     }
 
@@ -477,72 +462,93 @@ public class ACTcpClient : IClient
     {
         using var clientEvent = reader.ReadPacket<ClientEvent>();
 
-        foreach (var evt in clientEvent.ClientEvents)
-        {
-            EntryCar? targetCar = null;
+        //foreach (var evt in clientEvent.ClientEvents)
+        //{
+        //    EntryCarBase? targetCar = null;
                 
-            if (evt.Type == ClientEventType.CollisionWithCar)
-            {
-                targetCar = _entryCarManager.EntryCars[evt.TargetSessionId];
-                Logger.Information("Collision between {SourceCarName} ({SourceCarSessionId}) and {TargetCarName} ({TargetCarSessionId}), rel. speed {Speed:F0}km/h", 
-                    Name, EntryCar.SessionId, targetCar.Client?.Name ?? targetCar.AiName, targetCar.SessionId, evt.Speed);
-            }
-            else
-            {
-                Logger.Information("Collision between {SourceCarName} ({SourceCarSessionId}) and environment, rel. speed {Speed:F0}km/h", 
-                    Name, EntryCar.SessionId, evt.Speed);
-            }
-                
-            Collision?.Invoke(this, new CollisionEventArgs(targetCar, evt.Speed, evt.Position, evt.RelPosition));
-        }
+        //    if (evt.Type == ClientEventType.CollisionWithCar)
+        //    {
+        //        targetCar = _entryCarManager.EntryCars[evt.TargetSessionId];
+        //        Logger.Information("Collision between {SourceCarName} ({SourceCarSessionId}) and {TargetCarName} ({TargetCarSessionId}), rel. speed {Speed:F0}km/h", 
+        //            Name, EntryCar.SessionId, targetCar.Client?.Name ?? targetCar.AiName, targetCar.SessionId, evt.Speed);
+        //    }
+        //    else
+        //    {
+        //        Logger.Information("Collision between {SourceCarName} ({SourceCarSessionId}) and environment, rel. speed {Speed:F0}km/h", 
+        //            Name, EntryCar.SessionId, evt.Speed);
+        //    }
+        //}
     }
 
     private void OnSpectateCar(PacketReader reader)
     {
         SpectateCar spectatePacket = reader.ReadPacket<SpectateCar>();
-        EntryCar.TargetCar = spectatePacket.SessionId != SessionId ? _entryCarManager.EntryCars[spectatePacket.SessionId] : null;
+
+        if (ClientCar == null)
+            return;
+
+        if (_entryCarManager.EntryCars[spectatePacket.SessionId] is EntryCarClient targetClientCar)
+            ClientCar.SpectatorTargetCar = targetClientCar;
+        else
+            ClientCar.SpectatorTargetCar = null;
     }
 
     private void OnChecksum(PacketReader reader)
     {
         bool passedChecksum = false;
-        byte[] fullChecksum = new byte[16 * (_checksumManager.TrackChecksums.Count + 1)];
-        if (reader.Buffer.Length == fullChecksum.Length + 1)
-        {
-            reader.ReadBytes(fullChecksum);
-            passedChecksum = !_checksumManager.CarChecksums.TryGetValue(EntryCar.Model, out List<byte[]>? modelChecksums) || modelChecksums.Count == 0
-                || modelChecksums.Any(c => fullChecksum.AsSpan().Slice(fullChecksum.Length - 16).SequenceEqual(c));
 
-            KeyValuePair<string, byte[]>[] allChecksums = _checksumManager.TrackChecksums.ToArray();
-            for (int i = 0; i < allChecksums.Length; i++)
+        if (ClientCar != null)
+        {
+            byte[] fullChecksum = new byte[16 * (_checksumManager.TrackChecksums.Count + 1)];
+            if (reader.Buffer.Length == fullChecksum.Length + 1)
             {
-                if (!allChecksums[i].Value.AsSpan().SequenceEqual(fullChecksum.AsSpan().Slice(i * 16, 16)))
+                reader.ReadBytes(fullChecksum);
+                passedChecksum =
+                    !_checksumManager.CarChecksums.TryGetValue(ClientCar.Model, out List<byte[]>? modelChecksums) ||
+                    modelChecksums.Count == 0
+                    || modelChecksums.Any(c => fullChecksum.AsSpan().Slice(fullChecksum.Length - 16).SequenceEqual(c));
+
+                KeyValuePair<string, byte[]>[] allChecksums = _checksumManager.TrackChecksums.ToArray();
+                for (int i = 0; i < allChecksums.Length; i++)
                 {
-                    Logger.Information("{ClientName} failed checksum for file {ChecksumFile}", Name, allChecksums[i].Key);
-                    passedChecksum = false;
-                    break;
+                    if (!allChecksums[i].Value.AsSpan().SequenceEqual(fullChecksum.AsSpan().Slice(i * 16, 16)))
+                    {
+                        Logger.Information("{ClientName} failed checksum for file {ChecksumFile}", Name,
+                            allChecksums[i].Key);
+                        passedChecksum = false;
+                        break;
+                    }
                 }
             }
         }
-        
-        if (!passedChecksum)
-        {
-            ChecksumFailed?.Invoke(this, EventArgs.Empty);
-            _ = _entryCarManager.KickAsync(this, KickReason.ChecksumFailed, null, null, $"{Name} failed the checksum check and has been kicked.");
-        }
         else
         {
-            ChecksumPassed?.Invoke(this, EventArgs.Empty);
+            Logger.Warning("Client is required to perform a checksum, but has no car! {this}", this);
+        }
 
-            _entryCarManager.BroadcastPacket(new CarConnected
+        // Checksum callback
+        ClientChecksumResultEventArgs eventArgs = new()
+        {
+            ChecksumValid = passedChecksum,
+        };
+        ChecksumCompleted?.Invoke(this, eventArgs);
+        HasPassedChecksum = eventArgs.ChecksumValid;
+
+        // Kick unverified, otherwise broadcast the connection
+        if (HasPassedChecksum)
+        {
+            _acServer.BroadcastPacket(new CarConnected
             {
                 SessionId = SessionId,
                 Name = Name,
                 Nation = NationCode
             }, this);
         }
-        
-        HasPassedChecksum = passedChecksum;
+        else
+        {
+            _ = _acServer.KickAsync(this, KickReason.ChecksumFailed, null, null,
+                $"{Name} failed the checksum check and has been kicked.");
+        }
     }
 
     private void OnChat(PacketReader reader)
@@ -554,27 +560,48 @@ public class ACTcpClient : IClient
 
         if (_configuration.Extra.AfkKickBehavior == AfkKickBehavior.PlayerInput)
         {
-            EntryCar.SetActive();
+            ClientCar?.UpdateActiveTime();
         }
 
+        // Read chat
         ChatMessage chatMessage = reader.ReadPacket<ChatMessage>();
         chatMessage.SessionId = SessionId;
-            
-        Logger.Information("CHAT: {ClientName} ({SessionId}): {ChatMessage}", Name, SessionId, chatMessage.Message);
 
-        var args = new ChatMessageEventArgs
-        {
+        Logger.Information("CHAT MESSAGE: {ClientName} ({SessionId}): {ChatMessage}", Name, SessionId, chatMessage.Message);
+
+        // Prepare chat event
+        ChatMessageEventArgs eventArgs = new ChatMessageEventArgs() {
             ChatMessage = chatMessage
         };
-        ChatMessageReceived?.Invoke(this, args);
+
+        // Process event before the command. Early return if done.
+        ChatRawEvent?.Invoke(this, eventArgs);
+        if (eventArgs.Cancel)
+            return;
+
+        // Try Normal command execution
+        if (_chatService.ProcessChatCommand(this, chatMessage))
+            return;
+
+        // Process event before the command. Early return if done.
+        ChatMessageEvent?.Invoke(this, eventArgs);
+        if (eventArgs.Cancel)
+            return;
+
+        // Finally, let's broadcast
+        _acServer.BroadcastPacket(eventArgs.ChatMessage);
     }
 
     private void OnDamageUpdate(PacketReader reader)
     {
         DamageUpdateIncoming damageUpdate = reader.ReadPacket<DamageUpdateIncoming>();
-        EntryCar.Status.DamageZoneLevel = damageUpdate.DamageZoneLevel;
+
+        if (ClientCar != null)
+            ClientCar.Status.DamageZoneLevel = damageUpdate.DamageZoneLevel;
+        else
+            Logger.Warning("OnDamageUpdate: Client has no car!");
             
-        _entryCarManager.BroadcastPacket(new DamageUpdate
+        _acServer.BroadcastPacket(new DamageUpdate
         {
             SessionId = SessionId,
             DamageZoneLevel = damageUpdate.DamageZoneLevel,
@@ -584,9 +611,12 @@ public class ACTcpClient : IClient
     private void OnTyreCompoundChange(PacketReader reader)
     {
         TyreCompoundChangeRequest compoundChangeRequest = reader.ReadPacket<TyreCompoundChangeRequest>();
-        EntryCar.Status.CurrentTyreCompound = compoundChangeRequest.CompoundName;
+        if (ClientCar != null)
+            ClientCar.Status.CurrentTyreCompound = compoundChangeRequest.CompoundName;
+        else
+            Logger.Warning("OnTyreCompoundChange: Client has no car!");
 
-        _entryCarManager.BroadcastPacket(new TyreCompoundUpdate
+        _acServer.BroadcastPacket(new TyreCompoundUpdate
         {
             CompoundName = compoundChangeRequest.CompoundName,
             SessionId = SessionId
@@ -597,21 +627,27 @@ public class ACTcpClient : IClient
     {
         // ReSharper disable once InconsistentNaming
         P2PUpdateRequest p2pUpdateRequest = reader.ReadPacket<P2PUpdateRequest>();
+        if (ClientCar == null)
+        {
+            Logger.Warning("OnP2PUpdate: Client has no car!");
+            return;
+        }
+
         if (p2pUpdateRequest.P2PCount == -1)
         {
             SendPacket(new P2PUpdate
             {
                 Active = false,
-                P2PCount = EntryCar.Status.P2PCount,
+                P2PCount = ClientCar.Status.P2PCount,
                 SessionId = SessionId
             });
         }
         else
         {
-            _entryCarManager.BroadcastPacket(new P2PUpdate
+            _acServer.BroadcastPacket(new P2PUpdate
             {
-                Active = EntryCar.Status.P2PActive,
-                P2PCount = EntryCar.Status.P2PCount,
+                Active = ClientCar.Status.P2PActive,
+                P2PCount = ClientCar.Status.P2PCount,
                 SessionId = SessionId
             });
         }
@@ -621,12 +657,25 @@ public class ACTcpClient : IClient
     {
         CarListRequest carListRequest = reader.ReadPacket<CarListRequest>();
 
-        var carsInPage = _entryCarManager.EntryCars.Skip(carListRequest.PageIndex).Take(10).ToList();
+        List<CarListResponse.Entry> carsInPage = _entryCarManager.ClientCars
+            .Skip(carListRequest.PageIndex).Take(10)
+            .Select(e => new CarListResponse.Entry()
+            {
+                SessionId = e.SessionId,
+                Model = e.Model,
+                Skin = e.Skin,
+                ClientName = e.Client?.Name ?? "<unknown>",
+                TeamName = e.Client?.Team ?? "<unknown>",
+                NationCode = e.Client?.NationCode ?? "<unknown>",
+                IsSpectator = e.IsSpectator,
+                DamageZoneLevel = e.Status.DamageZoneLevel.ToArray(),
+            }).ToList();
+
         CarListResponse carListResponse = new CarListResponse
         {
             PageIndex = carListRequest.PageIndex,
             EntryCarsCount = carsInPage.Count,
-            EntryCars = carsInPage
+            Entries = carsInPage
         };
 
         SendPacket(carListResponse);
@@ -640,7 +689,7 @@ public class ACTcpClient : IClient
         if (OnLapCompleted(lapPacket))
         {
             LapCompletedOutgoing packet = CreateLapCompletedPacket(SessionId, lapPacket.LapTime, lapPacket.Cuts);
-            _entryCarManager.BroadcastPacket(packet);
+            _acServer.BroadcastPacket(packet);
             LapCompleted?.Invoke(this, new LapCompletedEventArgs(packet));
         }
     }
@@ -649,7 +698,8 @@ public class ACTcpClient : IClient
     {
         int timestamp = (int)_sessionManager.ServerTimeMilliseconds;
 
-        var entryCarResult = _sessionManager.CurrentSession.Results?[SessionId] ?? throw new InvalidOperationException("Current session does not have results set");
+        EntryCarResult entryCarResult = _sessionManager.CurrentSession.Results?[SessionId] ?? 
+                                        throw new InvalidOperationException("Current session does not have results set");
 
         if (entryCarResult.HasCompletedLastLap)
         {
@@ -681,11 +731,11 @@ public class ACTcpClient : IClient
                 _sessionManager.CurrentSession.LeaderLapCount = entryCarResult.NumLaps;
             }
 
-            entryCarResult.TotalTime = (uint)(_sessionManager.CurrentSession.SessionTimeMilliseconds - EntryCar.Ping / 2);
+            entryCarResult.TotalTime = (uint)(_sessionManager.CurrentSession.SessionTimeMilliseconds - ClientCar!.Ping / 2);
 
             if (_sessionManager.CurrentSession.SessionOverFlag)
             {
-                if (_sessionManager.CurrentSession.Configuration.Type == SessionType.Race && _sessionManager.CurrentSession.Configuration.IsTimedRace)
+                if (_sessionManager.CurrentSession.Configuration is { Type: SessionType.Race, IsTimedRace: true })
                 {
                     if (_configuration.Server.HasExtraLap)
                     {
@@ -731,7 +781,7 @@ public class ACTcpClient : IClient
             }
             else if (_sessionManager.CurrentSession.Configuration.IsTimedRace)
             {
-                if (_sessionManager.CurrentSession.LeaderHasCompletedLastLap && _sessionManager.CurrentSession.EndTime == 0)
+                if (_sessionManager.CurrentSession is { LeaderHasCompletedLastLap: true, EndTime: 0 })
                 {
                     _sessionManager.CurrentSession.EndTime = timestamp;
                 }
@@ -773,25 +823,27 @@ public class ACTcpClient : IClient
 
         HasReceivedFirstPositionUpdate = true;
         
-        _ = Task.Delay(40000).ContinueWith(async _ =>
+        _ = Task.Delay(_configuration.Extra.MaxChecksumWaitTime * 1000).ContinueWith(async _ =>
         {
             if (!HasPassedChecksum && IsConnected)
             {
-                await _entryCarManager.KickAsync(this, KickReason.ChecksumFailed, null, null, $"{Name} did not send the requested checksums.");
+                await _acServer.KickAsync(this, KickReason.ChecksumFailed, null, null, 
+                    $"{Name} did not send the requested checksums.");
             }
         });
     }
 
     internal void SendFirstUpdate()
     {
-        if (HasSentFirstUpdate)
+        if (HasSentFirstUpdate || ClientCar == null)
             return;
 
         TcpClient.ReceiveTimeout = 0;
-        EntryCar.LastPongTime = _sessionManager.ServerTimeMilliseconds;
-        HasSentFirstUpdate = true;
+        ClientCar.LastPongTime = _sessionManager.ServerTimeMilliseconds;
 
-        List<EntryCar> connectedCars = _entryCarManager.EntryCars.Where(c => c.Client != null || c.AiControlled).ToList();
+        // Filter all cars with connected client and all AI cars
+        List<EntryCarBase> connectedCars = _entryCarManager.EntryCars
+            .Where(c => (c.Client != null || c.IsAiCar)).ToList();
 
         if (!string.IsNullOrEmpty(_cspServerExtraOptions.EncodedWelcomeMessage))
             SendPacket(new WelcomeMessage { Message = _cspServerExtraOptions.EncodedWelcomeMessage });
@@ -799,18 +851,28 @@ public class ACTcpClient : IClient
         SendPacket(new DriverInfoUpdate { ConnectedCars = connectedCars });
         _weatherManager.SendWeather(this);
 
-        foreach (EntryCar car in connectedCars)
+        foreach (EntryCarBase car in connectedCars)
         {
-            SendPacket(new MandatoryPitUpdate { MandatoryPit = car.Status.MandatoryPit, SessionId = car.SessionId });
-            if (car != EntryCar)
-                SendPacket(new TyreCompoundUpdate { SessionId = car.SessionId, CompoundName = car.Status.CurrentTyreCompound });
+            SendPacket(new MandatoryPitUpdate { MandatoryPit = false, SessionId = car.SessionId });
+        }
 
-            if (_configuration.Extra.AiParams.HideAiCars)
+        // Update tires on all client cars
+        foreach (EntryCarClient otherClientCar in _entryCarManager.ClientCars)
+        {
+            if (otherClientCar != ClientCar)
+                SendPacket(new TyreCompoundUpdate { SessionId = otherClientCar.SessionId, CompoundName = otherClientCar.Status.CurrentTyreCompound });
+        }
+
+        // Hide all AI cars if requested
+        if (_configuration.Extra.AiParams.HideAiCars)
+        {
+            foreach (EntryCarAi aiCar in _entryCarManager.AiCars)
             {
+            
                 SendPacket(new CSPCarVisibilityUpdate
                 {
-                    SessionId = car.SessionId,
-                    Visible = car.AiControlled ? CSPCarVisibility.Invisible : CSPCarVisibility.Visible
+                    SessionId = aiCar.SessionId,
+                    Visible = CSPCarVisibility.Invisible
                 });
             }
         }
@@ -828,7 +890,9 @@ public class ACTcpClient : IClient
             });
         }
 
-        FirstUpdateSent?.Invoke(this, EventArgs.Empty);
+        // Now the client is ready to receive game packets. Notify the API
+        HasSentFirstUpdate = true;
+        GameLoaded?.Invoke(this, EventArgs.Empty);
     }
         
     private LapCompletedOutgoing CreateLapCompletedPacket(byte sessionId, uint lapTime, int cuts)
@@ -866,7 +930,7 @@ public class ACTcpClient : IClient
         return true;
     }
 
-    internal async Task DisconnectAsync()
+    internal async Task BeginDisconnectAsync()
     {
         try
         {
@@ -878,7 +942,7 @@ public class ACTcpClient : IClient
             if (!string.IsNullOrEmpty(Name))
             {
                 Logger.Debug("Disconnecting {ClientName} ({$ClientIpEndpoint})", Name, TcpClient.Client.RemoteEndPoint);
-                Disconnecting?.Invoke(this, EventArgs.Empty);
+                Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
             OutgoingPacketChannel.Writer.TryComplete();
@@ -886,13 +950,22 @@ public class ACTcpClient : IClient
 
             try
             {
-                DisconnectTokenSource.Cancel();
+                await DisconnectTokenSource.CancelAsync();
                 DisconnectTokenSource.Dispose();
             }
             catch (ObjectDisposedException) { }
-                
+
             if (IsConnected)
-                await _entryCarManager.DisconnectClientAsync(this);
+            {
+                await _entryCarManager.HandleClientDisconnected(this);
+                if (HasPassedChecksum)
+                    _acServer.BroadcastPacket(new CarDisconnected { SessionId = SessionId });
+
+                // The client has disconnected.
+                ClientCar = null;
+                IsConnected = false;
+                _acServer.NotifyClientDisconnected(this);
+            }
 
             TcpClient.Dispose();
         }

@@ -1,4 +1,5 @@
-﻿using AssettoServer.Utils;
+﻿using AssettoServer.Shared.Utils;
+using AssettoServer.Utils;
 using JetBrains.Annotations;
 
 namespace AssettoServer.Server.Configuration;

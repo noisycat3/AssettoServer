@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using AssettoServer.Server.Configuration;
+using AssettoServer.Shared.Utils;
 using Serilog;
 
 namespace AssettoServer.Server;

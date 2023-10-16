@@ -1,12 +1,10 @@
-﻿using System;
-using System.Linq;
-using System.Reflection;
+﻿using System.Reflection;
 
-namespace AssettoServer.Utils;
+namespace AssettoServer.Shared.Utils;
 
-internal static class PropertyInfoExtensions
+public static class PropertyInfoExtensions
 {
-    internal static bool IsInitOnly(this PropertyInfo property)
+    public static bool IsInitOnly(this PropertyInfo property)
     {
         var setMethod = property.SetMethod;
         if (setMethod == null)
@@ -16,7 +14,7 @@ internal static class PropertyInfoExtensions
         return setMethod.ReturnParameter.GetRequiredCustomModifiers().Contains(isExternalInitType);
     }
 
-    internal static bool SetValueFromString(this PropertyInfo property, object target, string value, bool percent = false, bool allowInit = false)
+    public static bool SetValueFromString(this PropertyInfo property, object target, string value, bool percent = false, bool allowInit = false)
     {
         var propertyType = property.PropertyType;
         if (propertyType == typeof(string))

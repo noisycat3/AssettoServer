@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using AssettoServer.Commands.TypeParsers;
 using AssettoServer.Network.Rcon;
 using AssettoServer.Network.Tcp;
-using AssettoServer.Server;
 using AssettoServer.Server.Plugin;
 using AssettoServer.Shared.Network.Packets.Shared;
 using Qmmands;
@@ -14,7 +13,6 @@ namespace AssettoServer.Commands;
 
 public class ChatService
 {
-    private readonly EntryCarManager _entryCarManager;
     private readonly Func<ACTcpClient, ACCommandContext> _contextFactory;
     private readonly Func<RconClient, int, ACCommandContext> _rconContextFactory;
     private readonly CommandService _commandService = new(new CommandServiceConfiguration
@@ -22,14 +20,12 @@ public class ChatService
         DefaultRunMode = RunMode.Parallel
     });
 
-    public event EventHandler<ACTcpClient, ChatEventArgs>? MessageReceived;
-
-    public ChatService(ACPluginLoader loader, Func<ACTcpClient, ACCommandContext> contextFactory, ACClientTypeParser acClientTypeParser, EntryCarManager entryCarManager, Func<RconClient, int, ACCommandContext> rconContextFactory)
+    public ChatService(ACPluginLoader loader, ACClientTypeParser acClientTypeParser, 
+        Func<ACTcpClient, ACCommandContext> contextFactory,  
+        Func<RconClient, int, ACCommandContext> rconContextFactory)
     {
         _contextFactory = contextFactory;
-        _entryCarManager = entryCarManager;
         _rconContextFactory = rconContextFactory;
-        _entryCarManager.ClientConnected += OnClientConnected;
 
         _commandService.AddModules(Assembly.GetEntryAssembly());
         _commandService.AddTypeParser(acClientTypeParser);
@@ -40,11 +36,6 @@ public class ChatService
         { 
             _commandService.AddModules(plugin.Assembly);
         }
-    }
-
-    private void OnClientConnected(ACTcpClient sender, EventArgs args)
-    {
-        sender.ChatMessageReceived += OnChatMessageReceived;
     }
 
     private ValueTask OnCommandExecuted(object? sender, CommandExecutedEventArgs args)
@@ -96,23 +87,13 @@ public class ChatService
         return ValueTask.CompletedTask;
     }
     
-    private void OnChatMessageReceived(ACTcpClient sender, ChatMessageEventArgs args)
+    public bool ProcessChatCommand(ACTcpClient sender, ChatMessage msg)
     {
-        if (!CommandUtilities.HasPrefix(args.ChatMessage.Message, '/', out string commandStr))
-        {
-            var outArgs = new ChatEventArgs(args.ChatMessage.Message);
-            MessageReceived?.Invoke(sender, outArgs);
+        if (!CommandUtilities.HasPrefix(msg.Message, '/', out string commandStr))
+            return false;
 
-            if (!outArgs.Cancel)
-            {
-                _entryCarManager.BroadcastPacket(args.ChatMessage);
-            }
-        }
-        else
-        {
-            var message = args.ChatMessage;
-            message.Message = commandStr;
-            _ = ProcessCommandAsync(sender, message);
-        }
+        msg.Message = commandStr;
+        _ = ProcessCommandAsync(sender, msg);
+        return true;
     }
 }

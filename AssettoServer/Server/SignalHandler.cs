@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.InteropServices;
+using AssettoServer.Shared.Model;
 
 namespace AssettoServer.Server;
 

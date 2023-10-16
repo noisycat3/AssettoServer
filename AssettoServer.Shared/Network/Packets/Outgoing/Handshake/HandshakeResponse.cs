@@ -1,9 +1,8 @@
 ﻿using AssettoServer.Shared.Model;
-using AssettoServer.Shared.Network.Packets.Incoming;
 
 namespace AssettoServer.Shared.Network.Packets.Outgoing.Handshake;
 
-public class HandshakeResponse : IOutgoingNetworkPacket, IIncomingNetworkPacket
+public class HandshakeResponse : IOutgoingNetworkPacket
 {
     public string ServerName = "";
     public ushort UdpPort;
@@ -34,8 +33,8 @@ public class HandshakeResponse : IOutgoingNetworkPacket, IIncomingNetworkPacket
     public short InvertedGridPositions;
     public byte SessionId;
     public byte SessionCount;
-    public IEnumerable<Session> Sessions = null!;
-    public Session CurrentSession = null!;
+    public IEnumerable<ISessionConfig> Sessions = null!;
+    public ISessionConfig CurrentSession = null!;
     public long SessionTime;
     public float TrackGrip;
     public byte SpawnPosition;
@@ -103,80 +102,5 @@ public class HandshakeResponse : IOutgoingNetworkPacket, IIncomingNetworkPacket
         writer.WriteUTF8String(LegalTyres);
         writer.Write(RandomSeed);
         writer.Write(CurrentTime);
-    }
-
-    public void FromReader(PacketReader reader)
-    {
-        ServerName = reader.ReadUTF32String();
-        UdpPort = reader.Read<ushort>();
-        RefreshRateHz = reader.Read<byte>();
-        TrackName = reader.ReadUTF8String();
-        TrackConfig = reader.ReadUTF8String();
-        CarModel = reader.ReadUTF8String();
-        CarSkin = reader.ReadUTF8String();
-        SunAngle = reader.Read<float>();
-        AllowedTyresOutCount = reader.Read<short>();
-        AllowTyreBlankets = reader.Read<bool>();
-        TractionControlAllowed = reader.Read<byte>();
-        ABSAllowed = reader.Read<byte>();
-        StabilityAllowed = reader.Read<bool>();
-        AutoClutchAllowed = reader.Read<bool>();
-        JumpStartPenaltyMode = reader.Read<byte>();
-        MechanicalDamageRate = reader.Read<float>();
-        FuelConsumptionRate = reader.Read<float>();
-        TyreConsumptionRate = reader.Read<float>();
-        IsVirtualMirrorForced = reader.Read<bool>();
-        MaxContactsPerKm = reader.Read<byte>();
-        RaceOverTime = reader.Read<int>();
-        ResultScreenTime = reader.Read<int>();
-        HasExtraLap = reader.Read<bool>();
-        IsGasPenaltyDisabled = reader.Read<bool>();
-        PitWindowStart = reader.Read<short>();
-        PitWindowEnd = reader.Read<short>();
-        InvertedGridPositions = reader.Read<short>();
-        SessionId = reader.Read<byte>();
-        SessionCount = reader.Read<byte>();
-
-        var sessions = new Session[SessionCount];
-
-        for (int i = 0; i < sessions.Length; i++)
-        {
-            sessions[i] = new Session
-            {
-                Type = reader.Read<SessionType>(),
-                Laps = reader.Read<ushort>(),
-                Time = reader.Read<ushort>()
-            };
-        }
-
-        Sessions = sessions;
-
-        CurrentSession = new Session
-        {
-            Name = reader.ReadUTF8String(),
-            Id = reader.Read<byte>(),
-            Type = reader.Read<SessionType>(),
-            Time = reader.Read<ushort>(),
-            Laps = reader.Read<ushort>()
-        };
-
-        TrackGrip = reader.Read<float>();
-        SessionId = reader.Read<byte>();
-        SessionTime = reader.Read<long>();
-
-        ChecksumCount = reader.Read<byte>();
-
-        var checksumPaths = new string[ChecksumCount];
-
-        for (int i = 0; i < checksumPaths.Length; i++)
-        {
-            checksumPaths[i] = reader.ReadUTF8String();
-        }
-
-        ChecksumPaths = checksumPaths;
-
-        LegalTyres = reader.ReadUTF8String();
-        RandomSeed = reader.Read<int>();
-        CurrentTime = reader.Read<int>();
     }
 }
