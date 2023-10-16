@@ -203,10 +203,12 @@ public class EntryCarManager
                 continue;
 
             IClient client = clientCar.Client;
+            if (!client.InGame || !client.IsUdpReady)
+                continue;
+
             foreach (EntryCarBase otherCar in EntryCars)
             {
-                //if (otherCar.WantSendUpdate)
-                if (!client.InGame || !client.IsUdpReady)
+                if (!otherCar.HasUpdateToSend)
                     continue;
 
                 CarStatus? status = otherCar.GetPositionUpdateForClient(clientCar);
@@ -214,11 +216,11 @@ public class EntryCarManager
                     continue;
 
                 // Register the update
-                _statusUpdates[otherCar.SessionId].Add(new CarStatusUpdate()
+                _statusUpdates[client.SessionId].Add(new CarStatusUpdate()
                 {
                     SessionId = otherCar.SessionId,
                     Ping = otherCar.Ping,
-                    TimeOffset = otherCar.TimeOffset,
+                    TimeOffset = clientCar.TimeOffset,
                     Status = status,
                 });
             }
@@ -232,36 +234,39 @@ public class EntryCarManager
 
             byte sessionId = (byte)updateListIndex;
             long timeMs = _sessionManager.Value.ServerTimeMilliseconds;
-            _ = Task.Run(() =>
+
+            // Client still valid
+            EntryCarBase baseCar = EntryCars[sessionId];
+            if ((baseCar.Client is not ACTcpClient { ClientCar: { } clientCar } client) || (clientCar != baseCar))
+                return;
+
+            CountedArray<CarStatusUpdate> updateList = _statusUpdates[sessionId];
+            PositionUpdateOut[] packetArray = updateList
+                .Select(u => Private_MakePositionUpdateFromCarState(u.SessionId, u.Ping, u.TimeOffset, u.Status))
+                .ToArray();
+
+            const int chunkSize = 20;
+            if (client.SupportsCSPCustomUpdate)
             {
-                // Client still valid
-                EntryCarBase baseCar = EntryCars[sessionId];
-                if ((baseCar.Client is not ACTcpClient { ClientCar: { } clientCar } client) || (clientCar != baseCar))
-                    return;
-
-                CountedArray<CarStatusUpdate> updateList = _statusUpdates[sessionId];
-                PositionUpdateOut[] packetArray = updateList
-                    .Select(u => Private_MakePositionUpdateFromCarState(u.SessionId, u.Ping, u.TimeOffset, u.Status))
-                    .ToArray();
-
-                const int chunkSize = 20;
-                if (client.SupportsCSPCustomUpdate)
+                for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
                 {
-                    for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
-                    {
-                        client.SendPacketUdp(new CSPPositionUpdate(
-                            new ArraySegment<PositionUpdateOut>(packetArray, packetIndex, Math.Min(chunkSize, packetArray.Length - packetIndex))));
-                    }
+                    client.SendPacketUdp(new CSPPositionUpdate(
+                        new ArraySegment<PositionUpdateOut>(packetArray, packetIndex, Math.Min(chunkSize, packetArray.Length - packetIndex))));
                 }
-                else
+            }
+            else
+            {
+                for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
                 {
-                    for (int packetIndex = 0; packetIndex < updateList.Count; packetIndex += chunkSize)
-                    {
-                        client.SendPacketUdp(new BatchedPositionUpdate((uint)(timeMs - clientCar.TimeOffset), clientCar.Ping,
-                            new ArraySegment<PositionUpdateOut>(packetArray, packetIndex, Math.Min(chunkSize, packetArray.Length - packetIndex))));
-                    }
+                    client.SendPacketUdp(packetArray[packetIndex]);
+                    //client.SendPacketUdp(new BatchedPositionUpdate((uint)(timeMs - clientCar.TimeOffset), clientCar.Ping,
+                    //    new ArraySegment<PositionUpdateOut>(packetArray, packetIndex, Math.Min(chunkSize, packetArray.Length - packetIndex))));
                 }
-            });
+            }
+
+            // Allow cars to clean up after update
+            foreach (EntryCarBase car in EntryCars)
+                car.PostUpdateCar();
         }
     }
 

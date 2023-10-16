@@ -14,7 +14,7 @@ public class EntryCarClient : EntryCarBase
     // IEntryCar implementation
     public override IClient? Client => _client;
 
-    private ACTcpClient? _client = null;
+    private ACTcpClient? _client;
     public override bool IsAiCar => false;
 
     // Factory
@@ -51,7 +51,8 @@ public class EntryCarClient : EntryCarBase
     public bool HasSentAfkWarning { get; internal set; }
 
     // Updates
-    public bool HasUpdateToSend { get; internal set; }
+    public override bool HasUpdateToSend => _hasUpdateToSend;
+    private bool _hasUpdateToSend;
 
     // EntryCarBase implementation
     public override void UpdateCar()
@@ -116,7 +117,7 @@ public class EntryCarClient : EntryCarBase
         //SpectatorMode = 0;
         LastActiveTime = 0;
         HasSentAfkWarning = false;
-        HasUpdateToSend = false;
+        _hasUpdateToSend = false;
 
         //TimeOffset = 0;
         //LastRemoteTimestamp = 0;
@@ -151,8 +152,8 @@ public class EntryCarClient : EntryCarBase
             //_ = _client.BeginDisconnectAsync();
             return;
         }
-        
-        HasUpdateToSend = true;
+
+        _hasUpdateToSend = true;
         LastRemoteTimestamp = positionUpdate.LastRemoteTimestamp;
 
         const float afkMinSpeed = 20 / 3.6f;
@@ -185,6 +186,11 @@ public class EntryCarClient : EntryCarBase
         Status.PerformanceDelta = positionUpdate.PerformanceDelta;
         Status.Gas = positionUpdate.Gas;
         Status.NormalizedPosition = positionUpdate.NormalizedPosition;
+    }
+
+    public override void PostUpdateCar()
+    {
+        _hasUpdateToSend = false;
     }
 
     internal void UpdateTimingValues(ushort ping, int timeOffset)

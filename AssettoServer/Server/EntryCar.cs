@@ -19,6 +19,8 @@ public abstract class EntryCarBase : IEntryCar
     public abstract int TimeOffset { get; }
     public abstract string Name { get; }
 
+    public abstract bool HasUpdateToSend { get; }
+
     // Slot configuration
     private readonly EntryList.Entry _listEntry;
 
@@ -73,6 +75,9 @@ public abstract class EntryCarBase : IEntryCar
 
     // Called to perform general update of each car
     public virtual void UpdateCar() { }
+
+    // Called after car state has been sent
+    public virtual void PostUpdateCar() { }
 
     // Called to retrieve the status for a particular car
     public virtual CarStatus? GetPositionUpdateForClient(EntryCarClient clientCar) => null;

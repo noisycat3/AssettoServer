@@ -11,6 +11,8 @@ public class EntryCarAi : EntryCarBase
     public override ushort Ping => 0;
     public override int TimeOffset => 0;
     public override string Name => "NPC";
+    public override bool HasUpdateToSend => true;
+
 
     // Factory
     public delegate EntryCarAi Factory(byte inSessionId, EntryList.Entry entry);
