@@ -15,6 +15,7 @@ using AssettoServer.Shared.Services;
 using AssettoServer.Shared.Utils;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using Serilog.Core;
 
 namespace AssettoServer.Network.Udp;
 
@@ -96,6 +97,8 @@ public class ACUdpServer : CriticalBackgroundService
 
             var packetId = (ACServerProtocol)packetReader.Read<byte>();
 
+            Log.Logger.Information("Received packet {packetId}, len: {size}", packetId, size);
+
             if (packetId == ACServerProtocol.CarConnect)
             {
                 int sessionId = packetReader.Read<byte>();
@@ -107,13 +110,17 @@ public class ACUdpServer : CriticalBackgroundService
                         _endpointCars[clonedAddress] = clientCar;
                         client.Disconnected += OnClientDisconnecting;
 
-                        Send(address, CarConnectResponse, 0, CarConnectResponse.Length);
+                        Send(clonedAddress, CarConnectResponse, 0, CarConnectResponse.Length);
+                        Log.Logger.Information("Sent CarConnectResponse packet {CarConnectResponse}, len: {Length}",
+                            CarConnectResponse, CarConnectResponse.Length);
                     }
                 }
             }
             else if (packetId == ACServerProtocol.LobbyCheck)
             {
                 Send(address, _lobbyCheckResponse, 0, _lobbyCheckResponse.Length);
+                Log.Logger.Information("Sent lobby check UDP packet {_lobbyCheckResponse}, len: {_lobbyCheckResponse.Length}", 
+                    _lobbyCheckResponse, _lobbyCheckResponse.Length);
             }
             /*else if (packetId == 0xFF)
             {

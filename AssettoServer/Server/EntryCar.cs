@@ -11,13 +11,16 @@ public abstract class EntryCarBase : IEntryCar
     // IEntry car interface
     public IACServer Server => _acServer;
     public byte SessionId { get; }
-    public virtual string Model => string.Empty;
-    public virtual string Skin => string.Empty;
+    public virtual string Model => _listEntry.Model;
+    public virtual string Skin => _listEntry.Skin ?? string.Empty;
     public abstract bool IsAiCar { get; }
     public virtual IClient? Client => null;
     public abstract ushort Ping { get; }
     public abstract int TimeOffset { get; }
     public abstract string Name { get; }
+
+    // Slot configuration
+    private readonly EntryList.Entry _listEntry;
 
     // Game references
     protected readonly ACServer _acServer;
@@ -50,9 +53,11 @@ public abstract class EntryCarBase : IEntryCar
         }
     }
 
-    protected EntryCarBase(byte inSessionId, ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
+    protected EntryCarBase(byte inSessionId, EntryList.Entry entry,
+        ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
     {
         SessionId = inSessionId;
+        _listEntry = entry;
 
         _acServer = acServer;
         _configuration = configuration;

@@ -18,10 +18,11 @@ public class EntryCarClient : EntryCarBase
     public override bool IsAiCar => false;
 
     // Factory
-    public delegate EntryCarClient Factory(byte inSessionId);
+    public delegate EntryCarClient Factory(byte inSessionId, EntryList.Entry entry);
 
-    public EntryCarClient(byte inSessionId, ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
-        : base(inSessionId, acServer, configuration, entryCarManager, sessionManager)
+    public EntryCarClient(byte inSessionId, EntryList.Entry entry, 
+        ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
+        : base(inSessionId, entry, acServer, configuration, entryCarManager, sessionManager)
     {
     }
 

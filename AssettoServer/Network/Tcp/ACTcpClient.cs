@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -191,12 +192,15 @@ public class ACTcpClient : IClient
     public void SendPacketUdp<TPacket>(in TPacket packet) where TPacket : IOutgoingNetworkPacket
     {
         if (UdpEndpoint == null) return;
-        
+
         try
         {
             byte[] buffer = UdpSendBuffer.Value!;
             PacketWriter writer = new PacketWriter(buffer);
             int bytesWritten = writer.WritePacket(in packet);
+
+            //Logger.Information("Sent UDP packet {packet.GetType().Name}, len: {bytesWritten}", 
+            //    packet.GetType().Name, bytesWritten);
 
             UdpServer.Send(UdpEndpoint, buffer, 0, bytesWritten);
         }
@@ -387,7 +391,7 @@ public class ACTcpClient : IClient
 
                         _ = Task.Delay(TimeSpan.FromMinutes(_configuration.Extra.PlayerLoadingTimeoutMinutes)).ContinueWith(async _ =>
                         {
-                            if ((ClientCar.Client == this) && IsConnected && !HasSentFirstUpdate)
+                            if (!IsDisconnectRequested && (ClientCar != null) && (ClientCar.Client == this) && IsConnected && !HasSentFirstUpdate)
                             {
                                 Logger.Information("{ClientName} has taken too long to spawn in and will be disconnected", Name);
                                 await BeginDisconnectAsync();

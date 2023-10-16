@@ -166,12 +166,12 @@ public class EntryCarManager
             EntryCarBase car;
             if (isAiCarEntry)
             {
-                EntryCarAi aiCar = _factoryEntryCarAi.Invoke((byte)i);
+                EntryCarAi aiCar = _factoryEntryCarAi.Invoke((byte)i, entry);
                 car = aiCar;
             }
             else
             {
-                EntryCarClient clientCar = _factoryEntryCarClient.Invoke((byte)i);
+                EntryCarClient clientCar = _factoryEntryCarClient.Invoke((byte)i, entry);
                 if (!string.IsNullOrWhiteSpace(entry.Guid))
                 {
                     clientCar.AllowedGuids = entry.Guid.Split(';').Select(ulong.Parse).ToList();

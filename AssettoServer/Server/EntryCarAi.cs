@@ -13,10 +13,11 @@ public class EntryCarAi : EntryCarBase
     public override string Name => "NPC";
 
     // Factory
-    public delegate EntryCarAi Factory(byte inSessionId);
+    public delegate EntryCarAi Factory(byte inSessionId, EntryList.Entry entry);
 
-    public EntryCarAi(byte inSessionId, ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
-        : base(inSessionId, acServer, configuration, entryCarManager, sessionManager)
+    public EntryCarAi(byte inSessionId, EntryList.Entry entry, 
+        ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
+        : base(inSessionId, entry, acServer, configuration, entryCarManager, sessionManager)
     {
 
     }
