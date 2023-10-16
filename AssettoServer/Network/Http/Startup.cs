@@ -19,6 +19,8 @@ using AssettoServer.Server.TrackParams;
 using AssettoServer.Server.UserGroup;
 using AssettoServer.Server.Weather;
 using AssettoServer.Server.Whitelist;
+using AssettoServer.Shared.Model;
+using AssettoServer.Shared.Services;
 using Autofac;
 using JetBrains.Annotations;
 using Microsoft.AspNetCore.Builder;
@@ -78,7 +80,7 @@ public class Startup
         builder.RegisterType<CSPServerExtraOptions>().AsSelf().SingleInstance();
         builder.RegisterType<ACTcpServer>().AsSelf().SingleInstance();
         builder.RegisterType<ACUdpServer>().AsSelf().SingleInstance();
-        builder.RegisterType<ACServer>().AsSelf().As<IHostedService>().SingleInstance();
+        builder.RegisterType<ACServer>().AsSelf().As<IHostedService>().As<IACServer>().SingleInstance();
         builder.RegisterType<OpenSlotFilterChain>().AsSelf().SingleInstance();
         builder.RegisterType<WhitelistSlotFilter>().As<IOpenSlotFilter>();
         builder.RegisterType<GuidSlotFilter>().As<IOpenSlotFilter>();

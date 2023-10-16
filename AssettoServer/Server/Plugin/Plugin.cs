@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using AssettoServer.Shared.Plugin;
 
 namespace AssettoServer.Server.Plugin;
 

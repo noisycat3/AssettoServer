@@ -1,39 +1,36 @@
-﻿using AssettoServer.Network.Tcp;
-using AssettoServer.Server;
-using Qmmands;
-using System;
+﻿using Qmmands;
 using System.Text;
-using AssettoServer.Network.Rcon;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Shared;
 using Serilog;
+using AssettoServer.Shared.Network.Packets.Outgoing;
 
 namespace AssettoServer.Commands;
 
 public sealed class ACCommandContext : CommandContext
 {
-    public ACServer Server { get; }
-    public ACTcpClient? Client { get; }
+    public IACServer Server { get; }
+    public IClient? Client { get; }
 
-    public RconClient? RconClient { get; }
+    public IRconClient? RconClient { get; }
     public int RconRequestId { get; }
     public StringBuilder? RconResponseBuilder { get; }
+    
 
-    private readonly EntryCarManager _entryCarManager;
-
-    public ACCommandContext(ACServer server, ACTcpClient client, EntryCarManager entryCarManager, IServiceProvider? serviceProvider = null) : base(serviceProvider)
+    public ACCommandContext(IACServer server, IClient client, IServiceProvider? serviceProvider = null) 
+        : base(serviceProvider)
     {
         Server = server;
         Client = client;
-        _entryCarManager = entryCarManager;
     }
 
-    public ACCommandContext(ACServer server, RconClient client, int rconRequestId, EntryCarManager entryCarManager, IServiceProvider? serviceProvider = null) : base(serviceProvider)
+    public ACCommandContext(IACServer server, IRconClient client, int rconRequestId, IServiceProvider? serviceProvider = null) 
+        : base(serviceProvider)
     {
         Server = server;
         RconResponseBuilder = new StringBuilder();
         RconClient = client;
         RconRequestId = rconRequestId;
-        _entryCarManager = entryCarManager;
     }
 
     public void Reply(string message)
@@ -49,11 +46,12 @@ public sealed class ACCommandContext : CommandContext
         Server.BroadcastPacket(new ChatMessage { SessionId = 255, Message = message });
     }
 
-    internal void SendRconResponse()
+    public void SendRconResponse()
     {
-        if (RconClient == null || RconResponseBuilder == null) return;
+        if (RconClient == null || RconResponseBuilder == null) 
+            return;
             
-        RconClient.SendPacket(new ResponseValuePacket
+        RconClient.SendPacket(new RconResponseValuePacket
         {
             RequestId = RconRequestId,
             Body = RconResponseBuilder.ToString()

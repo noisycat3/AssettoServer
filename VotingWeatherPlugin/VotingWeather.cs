@@ -1,7 +1,7 @@
 ﻿using AssettoServer.Network.Tcp;
 using AssettoServer.Server;
-using AssettoServer.Server.Plugin;
 using AssettoServer.Server.Weather;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Shared;
 using AssettoServer.Shared.Services;
 using AssettoServer.Shared.Weather;
@@ -14,7 +14,7 @@ public class VotingWeather : CriticalBackgroundService, IAssettoServerAutostart
 {
     private readonly WeatherManager _weatherManager;
     private readonly IWeatherTypeProvider _weatherTypeProvider;
-    private readonly EntryCarManager _entryCarManager;
+    private readonly IACServer _server;
     private readonly VotingWeatherConfiguration _configuration;
     private readonly List<WeatherFxType> _weathers;
     private readonly List<ACTcpClient> _alreadyVoted = new();
@@ -28,12 +28,12 @@ public class VotingWeather : CriticalBackgroundService, IAssettoServerAutostart
         public int Votes { get; set; }
     }
 
-    public VotingWeather(VotingWeatherConfiguration configuration, WeatherManager weatherManager, IWeatherTypeProvider weatherTypeProvider, EntryCarManager entryCarManager, IHostApplicationLifetime applicationLifetime) : base(applicationLifetime)
+    public VotingWeather(VotingWeatherConfiguration configuration, WeatherManager weatherManager, IWeatherTypeProvider weatherTypeProvider, IACServer server, IHostApplicationLifetime applicationLifetime) : base(applicationLifetime)
     {
         _configuration = configuration;
         _weatherManager = weatherManager;
         _weatherTypeProvider = weatherTypeProvider;
-        _entryCarManager = entryCarManager;
+        _server = server;
 
         if (!_configuration.BlacklistedWeathers.Contains(WeatherFxType.None))
         {
@@ -100,7 +100,7 @@ public class VotingWeather : CriticalBackgroundService, IAssettoServerAutostart
 
         var weathersLeft = new List<WeatherFxType>(_weathers);
 
-        _entryCarManager.BroadcastPacket(new ChatMessage { SessionId = 255, Message = "Vote for next weather:" });
+        _server.BroadcastPacket(new ChatMessage { SessionId = 255, Message = "Vote for next weather:" });
         for (int i = 0; i < _configuration.NumChoices; i++)
         {
             if (weathersLeft.Count < 1) break;
@@ -109,7 +109,7 @@ public class VotingWeather : CriticalBackgroundService, IAssettoServerAutostart
             _availableWeathers.Add(new WeatherChoice { Weather = nextWeather, Votes = 0 });
             weathersLeft.Remove(nextWeather);
 
-            _entryCarManager.BroadcastPacket(new ChatMessage { SessionId = 255, Message = $" /w {i} - {nextWeather}" });
+            _server.BroadcastPacket(new ChatMessage { SessionId = 255, Message = $" /w {i} - {nextWeather}" });
         }
 
         _votingOpen = true;
@@ -122,7 +122,7 @@ public class VotingWeather : CriticalBackgroundService, IAssettoServerAutostart
         var winner = weathers[Random.Shared.Next(weathers.Count)];
         var winnerType = _weatherTypeProvider.GetWeatherType(winner);
 
-        _entryCarManager.BroadcastPacket(new ChatMessage { SessionId = 255, Message = $"Weather vote ended. Next weather: {winner}" });
+        _server.BroadcastPacket(new ChatMessage { SessionId = 255, Message = $"Weather vote ended. Next weather: {winner}" });
 
         _weatherManager.SetWeather(new WeatherData(last.Type, winnerType)
         {

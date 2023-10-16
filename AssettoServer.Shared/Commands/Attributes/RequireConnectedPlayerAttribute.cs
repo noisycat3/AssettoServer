@@ -1,5 +1,4 @@
-﻿using System.Threading.Tasks;
-using Qmmands;
+﻿using Qmmands;
 
 namespace AssettoServer.Commands.Attributes;
 

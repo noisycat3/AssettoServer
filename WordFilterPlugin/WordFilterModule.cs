@@ -1,5 +1,6 @@
 ﻿using AssettoServer.Server.OpenSlotFilters;
 using AssettoServer.Server.Plugin;
+using AssettoServer.Shared.Plugin;
 using Autofac;
 
 namespace WordFilterPlugin;

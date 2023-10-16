@@ -4,7 +4,7 @@ using AssettoServer.Shared.Network.Packets.Incoming;
 
 namespace AssettoServer.Network.Rcon;
 
-public struct ExecCommandPacket : IIncomingNetworkPacket
+public struct RconExecCommandPacket : IIncomingNetworkPacket
 {
     public string Command { get; set; }
     

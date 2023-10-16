@@ -1,12 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Drawing;
-using AssettoServer.Commands;
-using AssettoServer.Network.Tcp;
-using AssettoServer.Server;
-using AssettoServer.Server.Configuration;
-using AssettoServer.Server.GeoParams;
-using AssettoServer.Server.Plugin;
 using AssettoServer.Shared.Discord;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Services;
 using CSharpDiscordWebhook.NET.Discord;
 using Microsoft.Extensions.Hosting;
@@ -21,30 +16,29 @@ public class ReportPlugin : CriticalBackgroundService, IAssettoServerAutostart
     private readonly ReportConfiguration _configuration;
     private readonly DiscordWebhook? _webhook;
     private readonly string _serverNameTruncated;
-    private readonly EntryCarManager _entryCarManager;
-    private readonly CSPServerExtraOptions _cspServerExtraOptions;
-    private readonly GeoParamsManager _geoParamsManager;
-    private readonly ACServerConfiguration _serverConfiguration;
-    private readonly Dictionary<ACTcpClient, Replay> _reports = new();
+    private readonly IACServer _server;
+    //private readonly CSPServerExtraOptions _cspServerExtraOptions;
+    //private readonly GeoParamsManager _geoParamsManager;
+    //private readonly ACServerConfiguration _serverConfiguration;
+    private readonly Dictionary<IClient, Replay> _reports = new();
     private readonly ConcurrentQueue<AuditEvent> _events = new();
 
     public ReportPlugin(
         ReportConfiguration configuration,
-        EntryCarManager entryCarManager,
-        ChatService chatService,
+        IACServer server,
         CSPServerExtraOptions cspServerExtraOptions,
         ACServerConfiguration serverConfiguration,
         GeoParamsManager geoParamsManager,
         IHostApplicationLifetime applicationLifetime) : base(applicationLifetime)
     {
         _configuration = configuration;
-        _entryCarManager = entryCarManager;
+        _server = server;
         _cspServerExtraOptions = cspServerExtraOptions;
         _serverConfiguration = serverConfiguration;
         _geoParamsManager = geoParamsManager;
 
-        _entryCarManager.ClientConnected += (sender, _) =>  sender.FirstUpdateSent += OnClientFirstUpdateSent;
-        _entryCarManager.ClientDisconnected += OnClientDisconnected;
+        server.ClientConnected += (sender, _) =>  sender.FirstUpdateSent += OnClientFirstUpdateSent;
+        server.ClientDisconnected += OnClientDisconnected;
         chatService.MessageReceived += OnChatMessage;
 
         _serverNameTruncated = DiscordUtils.SanitizeUsername(serverConfiguration.Server.Name);
@@ -73,7 +67,7 @@ public class ReportPlugin : CriticalBackgroundService, IAssettoServerAutostart
     {
         try
         {
-            var auditEvent = new PlayerConnectedAuditEvent(new AuditClient(sender.EntryCar));
+            var auditEvent = new PlayerConnectedAuditEvent(new AuditClient(sender));
             _events.Enqueue(auditEvent);
             DeleteOldEvents();
         }
@@ -83,15 +77,15 @@ public class ReportPlugin : CriticalBackgroundService, IAssettoServerAutostart
         }
     }
 
-    private void OnClientDisconnected(ACTcpClient sender, EventArgs args)
+    private void OnClientDisconnected(IACServer sender, ClientConnectionEventArgs args)
     {
         try
         {
-            var auditEvent = new PlayerDisconnectedAuditEvent(new AuditClient(sender));
+            var auditEvent = new PlayerDisconnectedAuditEvent(new AuditClient(args.Client));
             _events.Enqueue(auditEvent);
             DeleteOldEvents();
 
-            _reports.Remove(sender);
+            _reports.Remove(args.Client);
         }
         catch (Exception ex)
         {
@@ -99,11 +93,11 @@ public class ReportPlugin : CriticalBackgroundService, IAssettoServerAutostart
         }
     }
 
-    private void OnChatMessage(ACTcpClient sender, ChatEventArgs args)
+    private void OnChatMessage(ACTcpClient sender, ChatMessageEventArgs args)
     {
         try
         {
-            var auditEvent = new ChatMessageAuditEvent(new AuditClient(sender), args.Message);
+            var auditEvent = new ChatMessageAuditEvent(new AuditClient(sender), args.ChatMessage.Message);
             _events.Enqueue(auditEvent);
             DeleteOldEvents();
         }
@@ -168,11 +162,11 @@ public class ReportPlugin : CriticalBackgroundService, IAssettoServerAutostart
         await _webhook.SendAsync(msg, new FileInfo(Path.Join("reports", $"{replay.Guid}.zip")), new FileInfo(Path.Join("reports", $"{replay.Guid}.json")));
     }
     
-    public Replay? GetLastReplay(ACTcpClient client)
+    public Replay? GetLastReplay(IClient client)
     {
         _reports.TryGetValue(client, out var report);
         return report;
     }
 
-    public void SetLastReplay(ACTcpClient client, Replay replay) => _reports[client] = replay;
+    public void SetLastReplay(IClient client, Replay replay) => _reports[client] = replay;
 }

@@ -1,4 +1,4 @@
-﻿using AssettoServer.Server.Plugin;
+﻿using AssettoServer.Shared.Plugin;
 using Autofac;
 
 namespace GeoIPPlugin;

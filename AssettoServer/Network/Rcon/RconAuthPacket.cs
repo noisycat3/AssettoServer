@@ -4,7 +4,7 @@ using AssettoServer.Shared.Network.Packets.Incoming;
 
 namespace AssettoServer.Network.Rcon;
 
-public struct AuthPacket : IIncomingNetworkPacket
+public struct RconAuthPacket : IIncomingNetworkPacket
 {
     public string RconPassword { get; set; }
     

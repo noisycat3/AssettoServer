@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Server.Plugin;
+using AssettoServer.Shared.Services;
 using Open.Nat;
 using Serilog;
 

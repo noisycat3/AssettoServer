@@ -1,10 +1,11 @@
 ﻿using System.Drawing;
 using AssettoServer.Commands;
 using AssettoServer.Network.Tcp;
-using AssettoServer.Server;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Shared.Discord;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Outgoing;
+using AssettoServer.Shared.Network.Packets.Shared;
 using CSharpDiscordWebhook.NET.Discord;
 using Serilog;
 
@@ -19,7 +20,7 @@ public class Discord
     private DiscordWebhook? AuditHook { get; }
     private DiscordWebhook? ChatHook { get; }
 
-    public Discord(DiscordConfiguration configuration, EntryCarManager entryCarManager, ACServerConfiguration serverConfiguration, ChatService chatService)
+    public Discord(DiscordConfiguration configuration, IACServer server, ACServerConfiguration serverConfiguration, ChatService chatService)
     {
         _serverNameSanitized = DiscordUtils.SanitizeUsername(serverConfiguration.Server.Name);
         _configuration = configuration;
@@ -31,8 +32,8 @@ public class Discord
                 Uri = new Uri(_configuration.AuditUrl)
             };
 
-            entryCarManager.ClientKicked += OnClientKicked;
-            entryCarManager.ClientBanned += OnClientBanned;
+            server.ClientKicked += OnClientKicked;
+            server.ClientBanned += OnClientBanned;
         }
         
         if (!string.IsNullOrEmpty(_configuration.ChatUrl))
@@ -42,21 +43,30 @@ public class Discord
                 Uri = new Uri(_configuration.ChatUrl)
             };
 
-            chatService.MessageReceived += OnChatMessageReceived;
+            server.ClientConnected += (_, args) =>
+            {
+                args.Client.ChatMessageEvent += OnChatMessageReceived;
+            };
+
+            server.ClientDisconnected += (_, args) =>
+            {
+                args.Client.ChatMessageEvent -= OnChatMessageReceived;
+            };
         }
     }
 
-    private void OnClientBanned(ACTcpClient sender, ClientAuditEventArgs args)
+    private void OnClientBanned(IACServer server, ClientAuditEventArgs args)
     {
         Task.Run(async () =>
         {
             try
             {
+                IClient client = args.Client;
                 await AuditHook!.SendAsync(PrepareAuditMessage(
                     ":hammer: Ban alert",
                     _serverNameSanitized,
-                    sender.Guid, 
-                    sender.Name,
+                    client.Guid, 
+                    client.Name,
                     args.ReasonStr,
                     Color.Red,
                     args.Admin?.Name
@@ -69,10 +79,11 @@ public class Discord
         });
     }
 
-    private void OnClientKicked(ACTcpClient sender, ClientAuditEventArgs args)
+    private void OnClientKicked(IACServer server, ClientAuditEventArgs args)
     {
         if (args.Reason != KickReason.ChecksumFailed)
         {
+            IClient client = args.Client;
             Task.Run(async () =>
             {
                 try
@@ -80,8 +91,8 @@ public class Discord
                     await AuditHook!.SendAsync(PrepareAuditMessage(
                         ":boot: Kick alert",
                         _serverNameSanitized,
-                        sender.Guid, 
-                        sender.Name,
+                        client.Guid, 
+                        client.Name,
                         args.ReasonStr,
                         Color.Yellow,
                         args.Admin?.Name
@@ -95,8 +106,9 @@ public class Discord
         }
     }
 
-    private void OnChatMessageReceived(ACTcpClient sender, ChatEventArgs args)
+    private void OnChatMessageReceived(IClient sender, ChatMessageEventArgs argsM)
     {
+        ChatMessage args = argsM.ChatMessage;
         if (args.Message.StartsWith("\t\t\t\t$CSP0:")
             || string.IsNullOrWhiteSpace(args.Message)
             || _configuration.ChatIgnoreGuids.Contains(sender.Guid)) 

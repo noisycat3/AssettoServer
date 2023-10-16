@@ -1,4 +1,4 @@
-﻿using AssettoServer.Server.Configuration;
+﻿using AssettoServer.Shared.Configuration;
 using JetBrains.Annotations;
 using YamlDotNet.Serialization;
 

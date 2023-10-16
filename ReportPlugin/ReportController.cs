@@ -1,5 +1,5 @@
 ﻿using System.Net;
-using AssettoServer.Server;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Shared;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -11,18 +11,18 @@ namespace ReportPlugin;
 public class ReportController : ControllerBase
 {
     private readonly ReportPlugin _plugin;
-    private readonly EntryCarManager _entryCarManager;
+    private readonly IACServer _server;
 
-    public ReportController(ReportPlugin plugin, EntryCarManager entryCarManager)
+    public ReportController(ReportPlugin plugin, IACServer server)
     {
         _plugin = plugin;
-        _entryCarManager = entryCarManager;
+        _server = server;
     }
 
     [HttpPost("/report")]
     public async Task<ActionResult> PostReport(Guid key, [FromHeader(Name = "X-Car-Index")] int sessionId)
     {
-        var reporterClient = _entryCarManager.EntryCars[sessionId].Client ?? throw new InvalidOperationException("Client not connected");
+        var reporterClient = _server.GetCarBySessionId((byte)sessionId).Client ?? throw new InvalidOperationException("Client not connected");
         var lastReport = _plugin.GetLastReplay(reporterClient);
 
         if (_plugin.Key != key

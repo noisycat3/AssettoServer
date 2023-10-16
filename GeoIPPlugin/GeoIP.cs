@@ -1,6 +1,5 @@
 ﻿using System.Net;
-using AssettoServer.Network.Tcp;
-using AssettoServer.Server;
+using AssettoServer.Shared.Model;
 using MaxMind.GeoIP2;
 
 namespace GeoIPPlugin;
@@ -9,17 +8,19 @@ public class GeoIP
 {
     private readonly DatabaseReader _database;
 
-    public GeoIP(EntryCarManager entryCarManager, GeoIPConfiguration configuration)
+    public GeoIP(IACServer server, GeoIPConfiguration configuration)
     {
         _database = new DatabaseReader(configuration.DatabasePath);
-        entryCarManager.ClientConnected += OnClientConnected;
+        server.ClientConnected += OnClientConnected;
     }
 
-    private void OnClientConnected(ACTcpClient sender, EventArgs args)
+    private void OnClientConnected(IACServer server, ClientConnectionEventArgs args)
     {
+        IClient sender = args.Client;
+
         try
         {
-            if(sender.TcpClient.Client.RemoteEndPoint is IPEndPoint endpoint && _database.TryCity(endpoint.Address, out var response))
+            if(sender.RemoteAddress is IPEndPoint endpoint && _database.TryCity(endpoint.Address, out var response))
             {
                 sender.Logger.Information("GeoIP results for {ClientName}: {Country} ({CountryCode}) [{Lat},{Lon}]", sender.Name, response!.Country.Name, response.Country.IsoCode, response.Location.Latitude, response.Location.Longitude);
             }

@@ -1,4 +1,5 @@
-﻿using AssettoServer.Server.Plugin;
+﻿using AssettoServer.Shared.Plugin;
+using AssettoServer.Shared.Services;
 using Autofac;
 
 namespace AutoModerationPlugin;

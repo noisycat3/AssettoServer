@@ -1,5 +1,4 @@
-﻿using AssettoServer.Network.Tcp;
-using AssettoServer.Server;
+﻿using AssettoServer.Shared.Model;
 using JetBrains.Annotations;
 
 namespace ReportPlugin;
@@ -40,16 +39,16 @@ public readonly struct AuditClient
     public readonly string CarModel;
     public readonly string Skin;
 
-    public AuditClient(ACTcpClient client)
+    public AuditClient(IClient client)
     {
         Name = client.Name ?? "";
         SteamId = client.Guid;
         SessionId = client.SessionId;
-        CarModel = client.EntryCar.Model;
-        Skin = client.EntryCar.Skin;
+        CarModel = client.CurrentEntryCar?.Model ?? string.Empty;
+        Skin = client.CurrentEntryCar?.Skin ?? string.Empty;
     }
 
-    public AuditClient(EntryCar car)
+    public AuditClient(IEntryCar car)
     {
         Name = car.Client?.Name ?? "";
         SteamId = car.Client?.Guid ?? 0;

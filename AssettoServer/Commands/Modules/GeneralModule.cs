@@ -24,7 +24,7 @@ public class GeneralModule : ACModuleBase
 
     [Command("ping"), RequireConnectedPlayer]
     public void Ping()
-        => Reply($"Pong! {Context.Client!.ClientCar?.Ping}ms.");
+        => Reply($"Pong! {Context.Client?.Ping}ms.");
 
     [Command("time")]
     public void Time()

@@ -160,7 +160,7 @@ public class AdminModule : ACModuleBase
     [Command("distance"), RequireConnectedPlayer]
     public void GetDistance([Remainder] ACTcpClient player)
     {
-        if (Context.Client?.ClientCar?.Status is {} contextStatus && player.ClientCar?.Status is {} playerStatus)
+        if (Context.Client?.CurrentCarStatus is {} contextStatus && player.ClientCar?.Status is {} playerStatus)
             Reply(Vector3.Distance(contextStatus.Position, playerStatus.Position).ToString(CultureInfo.InvariantCulture));
     }
 

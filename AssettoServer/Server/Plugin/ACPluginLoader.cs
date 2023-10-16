@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using AssettoServer.Server.Configuration;
+using AssettoServer.Shared.Configuration;
+using AssettoServer.Shared.Plugin;
 using AssettoServer.Shared.Utils;
 using McMaster.NETCore.Plugins;
 using Serilog;

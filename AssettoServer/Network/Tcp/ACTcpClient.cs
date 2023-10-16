@@ -34,7 +34,6 @@ public class ACTcpClient : IClient
 {
     private ACServer Server => _acServer;
     private ACUdpServer UdpServer { get; }
-    public ILogger Logger { get; }
 
     public byte SessionId { get; set; }
     public bool InGame => (HasSentFirstUpdate && !IsDisconnectRequested);
@@ -45,11 +44,12 @@ public class ACTcpClient : IClient
     public string? Team { get; private set; }
     public string? NationCode { get; private set; }
 
-    public bool IsAdministrator { get; internal set; }
+    public bool IsAdministrator { get; set; }
     public ulong Guid { get; internal set; }
     public string HashedGuid { get; private set; } = "";
     public ulong? OwnerGuid { get; internal set; }
     public EntryCarClient? ClientCar { get; internal set; }
+
 
     [MemberNotNullWhen(true, nameof(Name), nameof(Team), nameof(NationCode))]
     public bool HasSentFirstUpdate { get; private set; }
@@ -77,6 +77,14 @@ public class ACTcpClient : IClient
     private long LastChatTime { get; set; }
     private int _disconnectRequested;
     
+    // Utility helpers
+    public ILogger Logger { get; }
+    public EndPoint? RemoteAddress => TcpClient.Client.RemoteEndPoint;
+    public IEntryCar? CurrentEntryCar => ClientCar;
+    public CarStatus? CurrentCarStatus => ClientCar?.Status;
+    public int Ping => ClientCar?.Ping ?? 0;
+
+    // Game references
     private readonly ACServer _acServer;
     private readonly WeatherManager _weatherManager;
     private readonly SessionManager _sessionManager;

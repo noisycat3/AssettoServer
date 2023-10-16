@@ -1,10 +1,9 @@
 ﻿using System.Text;
-using AssettoServer.Shared.Network.Packets;
-using AssettoServer.Shared.Network.Packets.Outgoing;
+using AssettoServer.Shared.Model;
 
-namespace AssettoServer.Network.Rcon;
+namespace AssettoServer.Shared.Network.Packets.Outgoing;
 
-public class ResponseValuePacket : IOutgoingNetworkPacket
+public class RconResponseValuePacket : IOutgoingNetworkPacket
 {
     public int RequestId { get; init; }
     public string Body { get; init; } = "";

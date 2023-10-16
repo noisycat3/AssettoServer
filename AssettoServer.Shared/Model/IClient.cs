@@ -1,4 +1,5 @@
-﻿using AssettoServer.Shared.Network.Packets.Outgoing;
+﻿using System.Net;
+using AssettoServer.Shared.Network.Packets.Outgoing;
 using Serilog;
 
 namespace AssettoServer.Shared.Model;
@@ -14,12 +15,18 @@ public interface IClient
     public string? Team { get; }
     public string? NationCode { get; }
 
-    public bool IsAdministrator { get; }
+    public bool IsAdministrator { get; set; } // TODO: User groups?
     public ulong Guid { get; }          // GUID of the player playing on the server
     public string HashedGuid { get; }   // Hash of the player GUID
     public ulong? OwnerGuid { get; }    // GUID of the owner of the game license
 
+    // Utility helpers
     public ILogger Logger { get; }
+    public EndPoint? RemoteAddress { get; }
+    public IEntryCar? CurrentEntryCar { get; }
+    public CarStatus? CurrentCarStatus { get; }
+    public int Ping { get; }
+
 
     // Send packet over TCP
     public void SendPacket<TPacket>(TPacket packet) where TPacket : IOutgoingNetworkPacket;

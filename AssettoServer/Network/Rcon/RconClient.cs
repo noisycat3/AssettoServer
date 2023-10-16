@@ -6,13 +6,14 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using AssettoServer.Commands;
 using AssettoServer.Server.Configuration;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 using Serilog;
 
 namespace AssettoServer.Network.Rcon;
 
-public class RconClient
+public class RconClient : IRconClient
 {
     private readonly ACServerConfiguration _configuration;
     private readonly ChatService _chatService;
@@ -23,8 +24,8 @@ public class RconClient
     private readonly Memory<byte> _tcpSendBuffer = new byte[4096];
     private readonly CancellationTokenSource _disconnectTokenSource = new ();
 
-    private bool _isAuthenticated = false;
-    private bool _isDisconnectRequested = false;
+    private bool _isAuthenticated;
+    private bool _isDisconnectRequested;
 
     private Task SendLoopTask { get; set; } = null!;
     
@@ -104,17 +105,17 @@ public class RconClient
 
                 if (!_isAuthenticated)
                 {
-                    AuthPacket authPacket = reader.ReadPacket<AuthPacket>();
+                    RconAuthPacket rconAuthPacket = reader.ReadPacket<RconAuthPacket>();
 
-                    if (authPacket.RconPassword == _configuration.Server.AdminPassword)
+                    if (rconAuthPacket.RconPassword == _configuration.Server.AdminPassword)
                     {
                         Log.Debug("Accepted RCON connection from {IpEndpoint}", _client.Client.RemoteEndPoint?.ToString());
                         _isAuthenticated = true;
-                        SendPacket(new AuthResponsePacket { RequestId = requestId });
+                        SendPacket(new RconAuthResponsePacket { RequestId = requestId });
                     }
                     else
                     {
-                        SendPacket(new AuthResponsePacket { RequestId = -1 });
+                        SendPacket(new RconAuthResponsePacket { RequestId = -1 });
                     }
 
                     if (!_isAuthenticated)
@@ -125,7 +126,7 @@ public class RconClient
                     switch (type)
                     {
                         case RconProtocolIn.ExecCommand:
-                            var packet = reader.ReadPacket<ExecCommandPacket>();
+                            var packet = reader.ReadPacket<RconExecCommandPacket>();
                             Log.Debug("RCON ({IpEndpoint}): {Command}", _client.Client.RemoteEndPoint?.ToString(), packet.Command);
                             await _chatService.ProcessCommandAsync(this, requestId, packet.Command);
                             break;

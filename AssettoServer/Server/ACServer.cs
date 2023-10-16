@@ -3,13 +3,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using AssettoServer.Network.Tcp;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Network.Udp;
 using AssettoServer.Server.Blacklist;
 using AssettoServer.Server.GeoParams;
-using AssettoServer.Server.Plugin;
 using AssettoServer.Server.Weather;
 using AssettoServer.Server.Whitelist;
 using AssettoServer.Shared.Model;
@@ -104,6 +104,11 @@ public class ACServer : CriticalBackgroundService, IACServer
             cspServerScriptProvider.AddScript(streamReader.ReadToEnd(), "assettoserver.lua");
         }
     }
+
+    public IEnumerable<IEntryCar> GetAllCars() => _entryCarManager.EntryCars;
+    public IEnumerable<IClient> GetAllClients() => _entryCarManager.EntryCars
+        .Select(c => c.Client).OfType<IClient>();
+    public IEntryCar GetCarBySessionId(byte sessionId) => _entryCarManager.EntryCars[sessionId];
 
     internal void NotifyClientConnected(ACTcpClient client)
     {

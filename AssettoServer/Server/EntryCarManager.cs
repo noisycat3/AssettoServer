@@ -59,7 +59,6 @@ public class EntryCarManager
 
         public bool UpdatesPending => (Updates.Count > 0);
     }
-
     private readonly CarStatusUpdateList[] _statusUpdates;
 
     public EntryCarManager(ACServerConfiguration configuration, IAdminService adminService, Lazy<SessionManager> sessionManager,

@@ -2,7 +2,7 @@
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace AssettoServer.Server.Plugin;
+namespace AssettoServer.Shared.Plugin;
 
 [UsedImplicitly(ImplicitUseTargetFlags.WithInheritors)]
 public abstract class AssettoServerModule : Module

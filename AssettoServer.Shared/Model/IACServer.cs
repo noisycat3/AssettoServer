@@ -31,6 +31,10 @@ public interface IACServer
     //  END IACServer EVENTS
     //  ************************
 
+    public IEnumerable<IEntryCar> GetAllCars();
+    public IEnumerable<IClient> GetAllClients();
+    public IEntryCar GetCarBySessionId(byte sessionId);
+
     public void BroadcastPacket<TPacket>(TPacket packet, IClient? sender = null) where TPacket : IOutgoingNetworkPacket;
 
     public void BroadcastPacketUdp<TPacket>(in TPacket packet, IClient? sender = null, float? range = null, bool skipSender = true) where TPacket : IOutgoingNetworkPacket;

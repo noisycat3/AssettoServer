@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Hosting;
 
-namespace AssettoServer.Server.Plugin;
+namespace AssettoServer.Shared.Services;
 
 public interface IAssettoServerAutostart : IHostedService
 {

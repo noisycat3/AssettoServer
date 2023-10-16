@@ -1,9 +1,10 @@
-﻿using AssettoServer.Shared.Network.Packets;
+﻿using AssettoServer.Shared.Model;
+using AssettoServer.Shared.Network.Packets;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 
 namespace AssettoServer.Network.Rcon;
 
-public class AuthResponsePacket : IOutgoingNetworkPacket
+public class RconAuthResponsePacket : IOutgoingNetworkPacket
 {
     public int RequestId { get; set; }
     

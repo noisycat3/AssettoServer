@@ -1,10 +1,6 @@
 ﻿using System.Numerics;
 using System.Reflection;
-using AssettoServer.Server;
-using AssettoServer.Server.Ai.Splines;
-using AssettoServer.Server.Configuration;
-using AssettoServer.Server.Plugin;
-using AssettoServer.Server.Weather;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 using AssettoServer.Shared.Network.Packets.Shared;
 using AssettoServer.Shared.Services;
@@ -27,7 +23,7 @@ public class AutoModerationPlugin : CriticalBackgroundService, IAssettoServerAut
     private readonly AutoModerationConfiguration _configuration;
     private readonly EntryCarManager _entryCarManager;
     private readonly WeatherManager _weatherManager;
-    private readonly Func<EntryCar, EntryCarAutoModeration> _entryCarAutoModerationFactory;
+    private readonly Func<IEntryCar, EntryCarAutoModeration> _entryCarAutoModerationFactory;
     private readonly AiSpline? _aiSpline;
 
     private readonly float _laneRadiusSquared;
