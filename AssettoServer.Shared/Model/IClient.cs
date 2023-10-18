@@ -4,9 +4,8 @@ using Serilog;
 
 namespace AssettoServer.Shared.Model;
 
-public interface IClient
+public interface IClient : ISessionObject
 {
-    public byte SessionId { get; }
     public bool InGame { get; }
     public bool IsUdpReady { get; }
     public bool IsDisconnectRequested { get; }
@@ -24,7 +23,7 @@ public interface IClient
     public ILogger Logger { get; }
     public EndPoint? RemoteAddress { get; }
     public IEntryCar? CurrentEntryCar { get; }
-    public CarStatus? CurrentCarStatus { get; }
+    public ICarInstance? CarInstance { get; }
     public int Ping { get; }
 
 

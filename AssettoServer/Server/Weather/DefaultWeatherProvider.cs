@@ -6,7 +6,7 @@ using Serilog;
 
 namespace AssettoServer.Server.Weather;
 
-public class DefaultWeatherProvider
+internal class DefaultWeatherProvider
 {
     private readonly ACServerConfiguration _configuration;
     private readonly WeatherManager _weatherManager;

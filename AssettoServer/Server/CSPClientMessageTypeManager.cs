@@ -6,7 +6,7 @@ using AssettoServer.Shared.Network.Packets.Shared;
 
 namespace AssettoServer.Server;
 
-public class CSPClientMessageTypeManager
+internal class CSPClientMessageTypeManager
 {
     internal IReadOnlyDictionary<uint, Action<ACTcpClient, PacketReader>> MessageTypes => _types;
     internal IReadOnlyDictionary<CSPClientMessageType, Action<ACTcpClient, PacketReader>> RawMessageTypes => _rawTypes;

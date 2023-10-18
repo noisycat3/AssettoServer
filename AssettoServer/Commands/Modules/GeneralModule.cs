@@ -11,7 +11,7 @@ using JetBrains.Annotations;
 namespace AssettoServer.Commands.Modules;
 
 [UsedImplicitly(ImplicitUseKindFlags.Access, ImplicitUseTargetFlags.WithMembers)]
-public class GeneralModule : ACModuleBase
+internal class GeneralModule : ACModuleBase
 {
     private readonly WeatherManager _weatherManager;
     private readonly ACServerConfiguration _configuration;

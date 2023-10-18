@@ -11,7 +11,7 @@ using Serilog;
 
 namespace AssettoServer.Commands;
 
-public class ChatService
+internal class ChatService
 {
     private readonly Func<ACTcpClient, ACCommandContext> _contextFactory;
     private readonly Func<RconClient, int, ACCommandContext> _rconContextFactory;

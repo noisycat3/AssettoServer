@@ -3,7 +3,7 @@ using AssettoServer.Shared.Network.Packets.Shared;
 
 namespace AssettoServer.Network.Http.Authentication;
 
-public class ACClientAuthentication
+internal class ACClientAuthentication
 {
     public ACClientAuthentication(CSPClientMessageTypeManager cspClientMessageTypeManager)
     {

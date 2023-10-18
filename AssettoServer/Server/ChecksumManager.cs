@@ -9,7 +9,7 @@ using Serilog;
 
 namespace AssettoServer.Server;
 
-public class ChecksumManager
+internal class ChecksumManager
 {
     public IReadOnlyDictionary<string, byte[]> TrackChecksums { get; private set; } = null!;
     public IReadOnlyDictionary<string, List<byte[]>> CarChecksums { get; private set; } = null!;

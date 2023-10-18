@@ -12,12 +12,10 @@ namespace AssettoServer.Commands.Modules;
 public class AiTrafficModule : ACModuleBase
 {
     private readonly ACServerConfiguration _configuration;
-    private readonly EntryCarManager _entryCarManager;
     
-    public AiTrafficModule(ACServerConfiguration configuration, EntryCarManager entryCarManager)
+    public AiTrafficModule(ACServerConfiguration configuration)
     {
         _configuration = configuration;
-        _entryCarManager = entryCarManager;
     }
 
     [Command("setaioverbooking")]

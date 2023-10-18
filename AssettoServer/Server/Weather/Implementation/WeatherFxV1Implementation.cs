@@ -1,11 +1,12 @@
 ﻿using System;
 using AssettoServer.Network.Tcp;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 using NodaTime;
 
 namespace AssettoServer.Server.Weather.Implementation;
 
-public class WeatherFxV1Implementation : IWeatherImplementation
+internal class WeatherFxV1Implementation : IWeatherImplementation
 {
     private readonly Lazy<ACServer> _acServer;
 
@@ -15,7 +16,7 @@ public class WeatherFxV1Implementation : IWeatherImplementation
         cspFeatureManager.Add(new CSPFeature { Name = "WEATHERFX_V1", Mandatory = true });
     }
 
-    public void SendWeather(WeatherData weather, ZonedDateTime dateTime, ACTcpClient? client = null)
+    public void SendWeather(WeatherData weather, ZonedDateTime dateTime, IClient client = null)
     {
         if (!_acServer.IsValueCreated)
             return;

@@ -30,7 +30,7 @@ using Serilog.Events;
 
 namespace AssettoServer.Network.Tcp;
 
-public class ACTcpClient : IClient
+internal class ACTcpClient : IClient
 {
     private ACServer Server => _acServer;
     private ACUdpServer UdpServer { get; }
@@ -81,7 +81,7 @@ public class ACTcpClient : IClient
     public ILogger Logger { get; }
     public EndPoint? RemoteAddress => TcpClient.Client.RemoteEndPoint;
     public IEntryCar? CurrentEntryCar => ClientCar;
-    public CarStatus? CurrentCarStatus => ClientCar?.Status;
+    public ICarInstance? CarInstance => ClientCar?.ClientCarInstance;
     public int Ping => ClientCar?.Ping ?? 0;
 
     // Game references
@@ -603,8 +603,8 @@ public class ACTcpClient : IClient
     {
         DamageUpdateIncoming damageUpdate = reader.ReadPacket<DamageUpdateIncoming>();
 
-        if (ClientCar != null)
-            ClientCar.Status.DamageZoneLevel = damageUpdate.DamageZoneLevel;
+        if (ClientCar is { ClientCarInstance: { } inst})
+            inst.Status.DamageZoneLevel = damageUpdate.DamageZoneLevel;
         else
             Logger.Warning("OnDamageUpdate: Client has no car!");
             
@@ -618,8 +618,8 @@ public class ACTcpClient : IClient
     private void OnTyreCompoundChange(PacketReader reader)
     {
         TyreCompoundChangeRequest compoundChangeRequest = reader.ReadPacket<TyreCompoundChangeRequest>();
-        if (ClientCar != null)
-            ClientCar.Status.CurrentTyreCompound = compoundChangeRequest.CompoundName;
+        if (ClientCar is { ClientCarInstance: { } inst })
+            inst.Status.CurrentTyreCompound = compoundChangeRequest.CompoundName;
         else
             Logger.Warning("OnTyreCompoundChange: Client has no car!");
 
@@ -634,7 +634,7 @@ public class ACTcpClient : IClient
     {
         // ReSharper disable once InconsistentNaming
         P2PUpdateRequest p2pUpdateRequest = reader.ReadPacket<P2PUpdateRequest>();
-        if (ClientCar == null)
+        if (ClientCar?.ClientCarInstance == null)
         {
             Logger.Warning("OnP2PUpdate: Client has no car!");
             return;
@@ -645,7 +645,7 @@ public class ACTcpClient : IClient
             SendPacket(new P2PUpdate
             {
                 Active = false,
-                P2PCount = ClientCar.Status.P2PCount,
+                P2PCount = ClientCar.ClientCarInstance.Status.P2PCount,
                 SessionId = SessionId
             });
         }
@@ -653,8 +653,8 @@ public class ACTcpClient : IClient
         {
             _acServer.BroadcastPacket(new P2PUpdate
             {
-                Active = ClientCar.Status.P2PActive,
-                P2PCount = ClientCar.Status.P2PCount,
+                Active = ClientCar.ClientCarInstance.Status.P2PActive,
+                P2PCount = ClientCar.ClientCarInstance.Status.P2PCount,
                 SessionId = SessionId
             });
         }
@@ -675,7 +675,7 @@ public class ACTcpClient : IClient
                 TeamName = e.Client?.Team ?? "<unknown>",
                 NationCode = e.Client?.NationCode ?? "<unknown>",
                 IsSpectator = e.IsSpectator,
-                DamageZoneLevel = e.Status.DamageZoneLevel.ToArray(),
+                DamageZoneLevel = e.ClientCarInstance?.Status.DamageZoneLevel.ToArray() ?? Enumerable.Repeat(0.0f, 5).ToArray(),
             }).ToList();
 
         CarListResponse carListResponse = new CarListResponse
@@ -867,7 +867,11 @@ public class ACTcpClient : IClient
         foreach (EntryCarClient otherClientCar in _entryCarManager.ClientCars)
         {
             if (otherClientCar != ClientCar)
-                SendPacket(new TyreCompoundUpdate { SessionId = otherClientCar.SessionId, CompoundName = otherClientCar.Status.CurrentTyreCompound });
+                SendPacket(new TyreCompoundUpdate
+                {
+                    SessionId = otherClientCar.SessionId, 
+                    CompoundName = otherClientCar.ClientCarInstance?.Status.CurrentTyreCompound
+                });
         }
 
         // Hide all AI cars if requested

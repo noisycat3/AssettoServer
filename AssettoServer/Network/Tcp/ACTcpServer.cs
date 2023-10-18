@@ -10,7 +10,7 @@ using Serilog;
 
 namespace AssettoServer.Network.Tcp;
 
-public class ACTcpServer : CriticalBackgroundService
+internal class ACTcpServer : CriticalBackgroundService
 {
     private readonly ACServerConfiguration _configuration;
     private readonly Func<TcpClient, ACTcpClient> _acTcpClientFactory;

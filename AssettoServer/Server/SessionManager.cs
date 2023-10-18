@@ -11,7 +11,7 @@ using Serilog;
 
 namespace AssettoServer.Server;
 
-public class SessionManager
+internal class SessionManager : ISessionManager
 {
     private readonly ACServerConfiguration _configuration;
     private readonly Func<SessionConfiguration, SessionState> _sessionStateFactory;

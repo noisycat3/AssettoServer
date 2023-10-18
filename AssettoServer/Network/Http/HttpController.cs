@@ -8,6 +8,7 @@ using AssettoServer.Server.Configuration;
 using AssettoServer.Server.GeoParams;
 using AssettoServer.Server.OpenSlotFilters;
 using AssettoServer.Server.Weather;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Http.Responses;
 using AssettoServer.Shared.Weather;
 using Microsoft.AspNetCore.Cors;
@@ -22,7 +23,7 @@ public class HttpController : ControllerBase
     private readonly CSPServerScriptProvider _serverScriptProvider;
     private readonly WeatherManager _weatherManager;
     private readonly SessionManager _sessionManager;
-    private readonly EntryCarManager _entryCarManager;
+    private readonly Lazy<IACServer> _server;
     private readonly GeoParamsManager _geoParamsManager;
     private readonly CSPFeatureManager _cspFeatureManager;
     private readonly IAdminService _adminService;
@@ -31,10 +32,10 @@ public class HttpController : ControllerBase
     private readonly ICMContentProvider _contentProvider;
 
     public HttpController(CSPServerScriptProvider serverScriptProvider,
-        WeatherManager weatherManager,
-        SessionManager sessionManager,
+        IWeatherManager weatherManager,
+        ISessionManager sessionManager,
         ACServerConfiguration configuration,
-        EntryCarManager entryCarManager,
+        Lazy<IACServer> server,
         GeoParamsManager geoParamsManager,
         CSPFeatureManager cspFeatureManager,
         IAdminService adminService,
@@ -43,10 +44,10 @@ public class HttpController : ControllerBase
         ICMContentProvider contentProvider)
     {
         _serverScriptProvider = serverScriptProvider;
-        _weatherManager = weatherManager;
-        _sessionManager = sessionManager;
+        _weatherManager = (weatherManager as WeatherManager)!;
+        _sessionManager = (sessionManager as SessionManager)!;
         _configuration = configuration;
-        _entryCarManager = entryCarManager;
+        _server = server;
         _geoParamsManager = geoParamsManager;
         _cspFeatureManager = cspFeatureManager;
         _adminService = adminService;
@@ -62,7 +63,7 @@ public class HttpController : ControllerBase
         InfoResponse responseObj = new InfoResponse
         {
             Cars = _cache.Cars,
-            Clients = _entryCarManager.ConnectedClientCount,
+            Clients = _server.Value.GetAllClients().Count(),
             Country = _cache.Country,
             CPort = _configuration.Server.HttpPort,
             Durations = _cache.Durations,
@@ -99,7 +100,7 @@ public class HttpController : ControllerBase
 
         EntryListResponse responseObj = new EntryListResponse
         {
-            Cars = _entryCarManager.EntryCars.Select(ec => new EntryListResponseCar
+            Cars = _server.Value.GetAllCars().Select(ec => new EntryListResponseCar
             {
                 Model = ec.Model,
                 Skin = ec.Skin,
@@ -124,7 +125,7 @@ public class HttpController : ControllerBase
         DetailResponse responseObj = new DetailResponse
         {
             Cars = _cache.Cars,
-            Clients = _entryCarManager.ConnectedClientCount,
+            Clients = _server.Value.GetAllClients().Count(),
             Country = _cache.Country,
             CPort = _configuration.Server.HttpPort,
             Durations = _cache.Durations,
@@ -148,7 +149,7 @@ public class HttpController : ControllerBase
             LoadingImageUrl = _configuration.Extra.LoadingImageUrl,
             Players = new DetailResponsePlayerList
             {
-                Cars = _entryCarManager.EntryCars.Select(ec => new DetailResponseCar
+                Cars = _server.Value.GetAllCars().Select(ec => new DetailResponseCar
                 {
                     Model = ec.Model,
                     Skin = ec.Skin,

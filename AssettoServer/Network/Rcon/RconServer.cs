@@ -10,7 +10,7 @@ using Serilog;
 
 namespace AssettoServer.Network.Rcon;
 
-public class RconServer : CriticalBackgroundService
+internal class RconServer : CriticalBackgroundService
 {
     private readonly ACServerConfiguration _configuration;
     private readonly Func<TcpClient, RconClient> _rconClientFactory;

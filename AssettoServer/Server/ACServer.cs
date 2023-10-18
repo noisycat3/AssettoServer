@@ -21,11 +21,14 @@ using Prometheus;
 using Serilog;
 using AssettoServer.Shared.Services;
 using AssettoServer.Shared.Utils;
+using AssettoServer.Server.Plugin;
+using AssettoServer.Shared.Plugin;
 
 namespace AssettoServer.Server;
 
-public class ACServer : CriticalBackgroundService, IACServer
+internal class ACServer : CriticalBackgroundService, IACServer
 {
+    private readonly ACPluginLoader _pluginLoader;
     private readonly ACServerConfiguration _configuration;
     private readonly IBlacklistService _blacklist;
     private readonly SessionManager _sessionManager;
@@ -41,6 +44,7 @@ public class ACServer : CriticalBackgroundService, IACServer
     public event EventHandler<ACServer, EventArgs>? Update;
 
     public ACServer(
+        ACPluginLoader pluginPluginLoader,
         ACServerConfiguration configuration,
         IBlacklistService blacklistService,
         IWhitelistService whitelistService,
@@ -59,6 +63,7 @@ public class ACServer : CriticalBackgroundService, IACServer
     {
         Log.Information("Starting server");
             
+        _pluginLoader = pluginPluginLoader;
         _configuration = configuration;
         _blacklist = blacklistService;
         _sessionManager = sessionManager;
@@ -108,7 +113,9 @@ public class ACServer : CriticalBackgroundService, IACServer
     public IEnumerable<IEntryCar> GetAllCars() => _entryCarManager.EntryCars;
     public IEnumerable<IClient> GetAllClients() => _entryCarManager.EntryCars
         .Select(c => c.Client).OfType<IClient>();
+    public int GetMaxSessionId() => _entryCarManager.EntryCars.Length;
     public IEntryCar GetCarBySessionId(byte sessionId) => _entryCarManager.EntryCars[sessionId];
+    public int GetUpdateRate() => _configuration.Server.RefreshRateHz;
 
     internal void NotifyClientConnected(ACTcpClient client)
     {
@@ -141,6 +148,9 @@ public class ACServer : CriticalBackgroundService, IACServer
         Log.Information("Server shutting down");
         BroadcastPacket(new ChatMessage { SessionId = 255, Message = "*** Server shutting down ***" });
 
+        foreach (var pluginV2 in _pluginLoader.Plugins)
+            pluginV2.PluginInstance.OnUnload(EAssettoServerPluginUnloadReason.Shutdown);
+
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var tasks = new List<Task>();
         
@@ -171,6 +181,12 @@ public class ACServer : CriticalBackgroundService, IACServer
         }
 
         _ = _applicationLifetime.ApplicationStopping.Register(OnApplicationStopping);
+
+        // Load plugins V2
+        _pluginLoader.LoadPluginsV2(this, _configuration.Extra.EnablePlugins);
+        foreach (var pluginV2 in _pluginLoader.Plugins)
+            pluginV2.PluginInstance.OnLoad();
+
         var mainThread = new Thread(() => MainLoop(stoppingToken))
         {
             Name = "MainLoop",
@@ -211,13 +227,23 @@ public class ACServer : CriticalBackgroundService, IACServer
         var updateLoopLateCounter = Metrics.CreateCounter("assettoserver_acserver_updateasync_late", "Total number of milliseconds the server was running behind");
         updateLoopLateCounter.Inc(0);
 
+        long lastTick = nextTick;
         while (!stoppingToken.IsCancellationRequested)
         {
+            long currentTick = _sessionManager.ServerTimeMilliseconds;
+            long tickDelta = currentTick - lastTick;
+
             try
             {
+                // Main update function
                 using (updateLoopTimer.NewTimer())
                 {
+                    // Invoke global update callback
                     Update?.Invoke(this, EventArgs.Empty);
+
+                    // Invoke plugin v2 update
+                    foreach (var pluginV2 in _pluginLoader.Plugins)
+                        pluginV2.PluginInstance.OnUpdate(currentTick, tickDelta);
 
                     // Prepare and send the outgoing car updates
                     _entryCarManager.Update();
@@ -230,24 +256,29 @@ public class ACServer : CriticalBackgroundService, IACServer
 
                 if (_entryCarManager.HasConnectedClients)
                 {
-                    long tickDelta;
+                    // Update last tick
+                    lastTick = currentTick;
+
+                    // Waiting loop
+                    long msToNextTick;
                     do
                     {
-                        long currentTick = _sessionManager.ServerTimeMilliseconds;
-                        tickDelta = nextTick - currentTick;
+                        msToNextTick = nextTick - _sessionManager.ServerTimeMilliseconds;
 
-                        if (tickDelta > 0)
-                            Thread.Sleep((int)tickDelta);
-                        else if (tickDelta < -sleepMs)
+                        if (msToNextTick > 1)
                         {
-                            if (tickDelta < -1000)
-                                Log.Warning("Server is running {TickDelta}ms behind", -tickDelta);
+                            Thread.Sleep((int)msToNextTick);
+                        }
+                        else if (msToNextTick < -sleepMs)
+                        {
+                            if (msToNextTick < -1000)
+                                Log.Warning("Server is running {TickDelta}ms behind", -msToNextTick);
 
-                            updateLoopLateCounter.Inc(-tickDelta);
+                            updateLoopLateCounter.Inc(-msToNextTick);
                             nextTick = 0;
                             break;
                         }
-                    } while (tickDelta > 0);
+                    } while (msToNextTick > 0);
 
                     if (nextTick == 0)
                         nextTick = _sessionManager.ServerTimeMilliseconds;
@@ -256,6 +287,7 @@ public class ACServer : CriticalBackgroundService, IACServer
                 }
                 else
                 {
+                    // Idle mode
                     nextTick = _sessionManager.ServerTimeMilliseconds;
                     Thread.Sleep(500);
                 }
@@ -294,6 +326,8 @@ public class ACServer : CriticalBackgroundService, IACServer
 
     public void BroadcastPacketUdp<TPacket>(in TPacket packet, IClient? sender = null, float? range = null, bool skipSender = true) where TPacket : IOutgoingNetworkPacket
     {
+        EntryCarClient? senderCar = (sender as ACTcpClient)?.ClientCar;
+
         foreach (EntryCarClient car in _entryCarManager.ClientCars)
         {
             if (car.Client == null)
@@ -302,8 +336,10 @@ public class ACServer : CriticalBackgroundService, IACServer
             if (skipSender && car.Client == sender) 
                 continue;
 
-            if (!range.HasValue || (sender is ACTcpClient { ClientCar: {} clientCar } && clientCar.IsInRange(car.Status, range.Value)))
+            if (!range.HasValue || (senderCar != null && car.ClientCarInstance is { } inst && senderCar.IsInRange(inst.Status, range.Value)))
+            {
                 car.Client.SendPacketUdp(in packet);
+            }
         }
     }
 

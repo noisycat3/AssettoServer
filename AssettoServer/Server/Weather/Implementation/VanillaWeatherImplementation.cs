@@ -1,12 +1,13 @@
 ﻿using System;
 using AssettoServer.Network.Tcp;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Outgoing;
 using AssettoServer.Shared.Weather;
 using NodaTime;
 
 namespace AssettoServer.Server.Weather.Implementation;
 
-public class VanillaWeatherImplementation : IWeatherImplementation
+internal class VanillaWeatherImplementation : IWeatherImplementation
 {
     private readonly Lazy<ACServer> _acServer;
     private readonly IWeatherTypeProvider _weatherTypeProvider;
@@ -18,7 +19,7 @@ public class VanillaWeatherImplementation : IWeatherImplementation
         _weatherTypeProvider = weatherTypeProvider;
     }
     
-    public void SendWeather(WeatherData weather, ZonedDateTime dateTime, ACTcpClient? client = null)
+    public void SendWeather(WeatherData weather, ZonedDateTime dateTime, IClient client = null)
     {
         if (!_acServer.IsValueCreated)
             return;

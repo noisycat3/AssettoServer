@@ -1,6 +1,7 @@
 ﻿using System.Threading.Tasks;
 using AssettoServer.Network.Tcp;
 using AssettoServer.Server.Whitelist;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Incoming;
 using AssettoServer.Shared.Network.Packets.Outgoing.Handshake;
 
@@ -15,7 +16,8 @@ public class WhitelistSlotFilter : OpenSlotFilterBase
         _whitelist = whitelist;
     }
 
-    public override async Task<AuthFailedResponse?> ShouldAcceptConnectionAsync(ACTcpClient client, HandshakeRequest request)
+    public override async Task<AuthFailedResponse?> ShouldAcceptConnectionAsync(IClient client,
+        HandshakeRequest request)
     {
         if (!await _whitelist.IsWhitelistedAsync(request.Guid))
         {

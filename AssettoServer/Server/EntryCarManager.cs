@@ -14,7 +14,7 @@ using Serilog;
 
 namespace AssettoServer.Server;
 
-public class EntryCarManager
+internal class EntryCarManager
 {
     // List of car slots on the server. Multiple AI instances can share one EntryCarAi slot.
     public EntryCarBase[] EntryCars { get; private set; } = Array.Empty<EntryCarBase>();
@@ -135,12 +135,14 @@ public class EntryCarManager
             // Fail if we didn't find a suitable car
             if (bestCarForClient == null)
                 return false;
-            
-            bestCarForClient.AssignClient(client);
-            client.ClientCar = bestCarForClient;
-            client.SessionId = bestCarForClient.SessionId;
 
-            return true;
+            if (bestCarForClient.AssignClient(client))
+            {
+                client.ClientCar = bestCarForClient;
+                client.SessionId = bestCarForClient.SessionId;
+
+                return true;
+            }
         }
         catch (Exception ex)
         {
@@ -227,9 +229,11 @@ public class EntryCarManager
                 if (!otherCar.HasUpdateToSend || otherCar == clientCar)
                     continue;
 
-                CarStatus? status = otherCar.GetPositionUpdateForClient(clientCar);
-                if (status == null)
+                ICarInstance? carInstance = otherCar.GetBestInstanceFor(clientCar);
+                if (carInstance == null)
                     continue;
+
+                CarStatus status = carInstance.Status; //otherCar.GetPositionUpdateForClient(clientCar);
 
                 // Register the update
                 _statusUpdates[client.SessionId].Updates.Add(new CarStatusUpdate()

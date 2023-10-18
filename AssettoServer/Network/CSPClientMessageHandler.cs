@@ -9,7 +9,7 @@ using Serilog;
 
 namespace AssettoServer.Network;
 
-public class CSPClientMessageHandler
+internal class CSPClientMessageHandler
 {
     public CSPClientMessageHandler(Lazy<ACServer> acServer, CSPClientMessageTypeManager cspClientMessageTypeManager,
         EntryCarManager entryCarManager, ACServerConfiguration configuration)
@@ -138,7 +138,7 @@ public class CSPClientMessageHandler
             if (sessionId.HasValue)
             {
                 if (_entryCarManager.EntryCars[sessionId.Value].Client is ACTcpClient client && 
-                    (!range.HasValue || sender.ClientCar!.IsInRange(client.ClientCar!.Status, range.Value)))
+                    (!range.HasValue || sender.ClientCar!.IsInRange(client.CarInstance!.Status, range.Value)))
                 {
                     client.SendPacketUdp(in clientMessage);
                 }

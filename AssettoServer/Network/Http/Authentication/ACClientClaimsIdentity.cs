@@ -4,7 +4,7 @@ using AssettoServer.Network.Tcp;
 
 namespace AssettoServer.Network.Http.Authentication;
 
-public class ACClientClaimsIdentity : ClaimsIdentity
+internal class ACClientClaimsIdentity : ClaimsIdentity
 {
     public required ACTcpClient Client { get; init; }
 

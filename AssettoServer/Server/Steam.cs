@@ -43,6 +43,7 @@ using System.Threading.Tasks;
 using AssettoServer.Network.Tcp;
 using AssettoServer.Server.Blacklist;
 using AssettoServer.Server.Configuration;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Services;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -110,7 +111,7 @@ public class Steam : CriticalBackgroundService
         }
     }
     
-    internal async ValueTask<bool> ValidateSessionTicketAsync(byte[]? sessionTicket, ulong guid, ACTcpClient client)
+    internal async ValueTask<bool> ValidateSessionTicketAsync(byte[]? sessionTicket, ulong guid, IClient client)
     {
         if (sessionTicket == null)
             return false;
@@ -140,7 +141,9 @@ public class Steam : CriticalBackgroundService
                 }
             };
 
-            client.OwnerGuid = ownerSteamId;
+            if (client is ACTcpClient tcpClient)
+                tcpClient.OwnerGuid = ownerSteamId;
+
             if (playerSteamId != ownerSteamId)
             {
                 if (_blacklistService.IsBlacklistedAsync(ownerSteamId).Result)

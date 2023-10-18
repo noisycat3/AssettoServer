@@ -72,7 +72,7 @@ public class Startup
         builder.RegisterType<CSPClientMessageTypeManager>().AsSelf().SingleInstance();
         builder.RegisterType<CSPClientMessageHandler>().AsSelf().SingleInstance();
         builder.RegisterType<Steam>().As<IHostedService>().AsSelf().SingleInstance();
-        builder.RegisterType<SessionManager>().AsSelf().SingleInstance();
+        builder.RegisterType<SessionManager>().As<ISessionManager>().AsSelf().SingleInstance();
         builder.RegisterType<EntryCarManager>().AsSelf().SingleInstance();
         builder.RegisterType<IpApiGeoParamsProvider>().As<IGeoParamsProvider>();
         builder.RegisterType<GeoParamsManager>().AsSelf().SingleInstance();

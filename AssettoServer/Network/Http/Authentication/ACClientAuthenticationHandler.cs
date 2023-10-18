@@ -3,7 +3,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 using AssettoServer.Network.Tcp;
-using AssettoServer.Server;
+using AssettoServer.Shared.Model;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -15,11 +15,11 @@ public class ACClientAuthenticationHandler : AuthenticationHandler<ACClientAuthe
     private const string CarIdHeader = "X-Car-Id";
     private const string ApiKeyHeader = "X-Api-Key";
     
-    private readonly EntryCarManager _entryCarManager;
+    private readonly IACServer _acServer;
     
-    public ACClientAuthenticationHandler(IOptionsMonitor<ACClientAuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, EntryCarManager entryCarManager) : base(options, logger, encoder)
+    public ACClientAuthenticationHandler(IOptionsMonitor<ACClientAuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, IACServer acServer) : base(options, logger, encoder)
     {
-        _entryCarManager = entryCarManager;
+        _acServer = acServer;
     }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -36,17 +36,16 @@ public class ACClientAuthenticationHandler : AuthenticationHandler<ACClientAuthe
         }
         
         string apiKey = apiKeyHdr.ToString();
-        if (_entryCarManager.EntryCars[carId].Client is ACTcpClient { ApiKey: {} clientKey } acClient && clientKey == apiKey)
+        IEntryCar car = _acServer.GetCarBySessionId((byte)carId);
+        if (car.Client is ACTcpClient { ApiKey: {} clientKey } acClient && clientKey == apiKey)
         {
-            var client = _entryCarManager.EntryCars[carId].Client!;
-
             var claims = new List<Claim>
             {
-                new(ClaimTypes.NameIdentifier, client.Guid.ToString()),
-                new(ClaimTypes.Name, client.Name!)
+                new(ClaimTypes.NameIdentifier, acClient.Guid.ToString()),
+                new(ClaimTypes.Name, acClient.Name!)
             };
 
-            if (client.IsAdministrator)
+            if (acClient.IsAdministrator)
             {
                 claims.Add(new Claim(ClaimTypes.Role, "Administrator"));
             }

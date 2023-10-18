@@ -13,7 +13,7 @@ using Serilog;
 
 namespace AssettoServer.Network.Rcon;
 
-public class RconClient : IRconClient
+internal class RconClient : IRconClient
 {
     private readonly ACServerConfiguration _configuration;
     private readonly ChatService _chatService;

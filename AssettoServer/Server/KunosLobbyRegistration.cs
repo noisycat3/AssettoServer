@@ -12,7 +12,7 @@ using Serilog;
 
 namespace AssettoServer.Server;
 
-public class KunosLobbyRegistration : CriticalBackgroundService
+internal class KunosLobbyRegistration : CriticalBackgroundService
 {
     private readonly ACServerConfiguration _configuration;
     private readonly SessionManager _sessionManager;

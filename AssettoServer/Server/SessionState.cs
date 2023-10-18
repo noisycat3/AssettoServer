@@ -4,7 +4,7 @@ using AssettoServer.Shared.Model;
 
 namespace AssettoServer.Server;
 
-public class SessionState : ISessionState
+internal class SessionState : ISessionState
 {
     public ISessionConfig Configuration => _configuration;
     private readonly SessionConfiguration _configuration;

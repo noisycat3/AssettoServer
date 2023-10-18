@@ -1,11 +1,11 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AssettoServer.Server;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Server.GeoParams;
-using AssettoServer.Server.Plugin;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Http.Responses;
 using AssettoServer.Shared.Services;
 using Microsoft.Extensions.Hosting;
@@ -16,7 +16,7 @@ namespace AssettoServer.Network.Http;
 public class HttpInfoCache : CriticalBackgroundService, IAssettoServerAutostart
 {
     private readonly GeoParamsManager _geoParamsManager;
-    private readonly EntryCarManager _entryCarManager;
+    private readonly Lazy<IACServer> _server;
 
     public IReadOnlyList<string> Cars { get; private set; } = null!;
     public IReadOnlyList<int> Durations { get; }
@@ -27,9 +27,9 @@ public class HttpInfoCache : CriticalBackgroundService, IAssettoServerAutostart
     public DetailResponseAssists Assists { get; }
     public IReadOnlyList<string> Country { get; private set; } = null!;
 
-    public HttpInfoCache(ACServerConfiguration configuration, EntryCarManager entryCarManager, IHostApplicationLifetime lifetime, GeoParamsManager geoParamsManager) : base(lifetime)
+    public HttpInfoCache(ACServerConfiguration configuration, Lazy<IACServer> server, IHostApplicationLifetime lifetime, GeoParamsManager geoParamsManager) : base(lifetime)
     {
-        _entryCarManager = entryCarManager;
+        _server = server;
         _geoParamsManager = geoParamsManager;
         
         Durations = configuration.Sessions.Select(c => c.IsTimedRace ? c.Time * 60 : c.Laps).ToReadOnlyList();
@@ -54,7 +54,7 @@ public class HttpInfoCache : CriticalBackgroundService, IAssettoServerAutostart
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Cars = _entryCarManager.EntryCars.Select(c => c.Model).Distinct().ToReadOnlyList();
+        Cars = _server.Value.GetAllCars().Select(c => c.Model).Distinct().ToReadOnlyList();
         Country = new[] { _geoParamsManager.GeoParams.Country, _geoParamsManager.GeoParams.CountryCode };
         return Task.CompletedTask;
     }

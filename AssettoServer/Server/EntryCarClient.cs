@@ -1,4 +1,5 @@
-﻿using AssettoServer.Network.Tcp;
+﻿using System;
+using AssettoServer.Network.Tcp;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Incoming;
@@ -6,10 +7,11 @@ using AssettoServer.Shared.Network.Packets.Shared;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading.Tasks;
+using AssettoServer.Utils;
 
 namespace AssettoServer.Server;
 
-public class EntryCarClient : EntryCarBase
+internal class EntryCarClient : EntryCarBase
 {
     // IEntryCar implementation
     public override IClient? Client => _client;
@@ -21,13 +23,12 @@ public class EntryCarClient : EntryCarBase
     public delegate EntryCarClient Factory(byte inSessionId, EntryList.Entry entry);
 
     public EntryCarClient(byte inSessionId, EntryList.Entry entry, 
-        ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
-        : base(inSessionId, entry, acServer, configuration, entryCarManager, sessionManager)
+        ACServer acServer, ACServerConfiguration configuration, SessionManager sessionManager)
+        : base(inSessionId, entry, acServer, configuration, sessionManager)
     {
     }
 
     // Internal data
-    public CarStatus Status { get; private set; } = new();
     public List<ulong> AllowedGuids { get; internal set; } = new();
 
     // Spectator
@@ -52,6 +53,34 @@ public class EntryCarClient : EntryCarBase
 
     // Updates
     public override bool HasUpdateToSend => _hasUpdateToSend;
+
+    public override int InstanceCount => (_instance == null) ? 0 : 1;
+    public override int InstanceMax => 1;
+    public override IEnumerable<ICarInstance> Instances =>
+        (_instance == null) ? Array.Empty<ICarInstance>() : _instance.Yield();
+
+    public CarInstance? ClientCarInstance => _instance;
+    private CarInstance? _instance;
+
+    public override ICarInstance CreateInstance()
+    {
+        if (_instance != null)
+            throw new InvalidOperationException("Client car can only have single instance!");
+
+        _instance = new CarInstance(this);
+        return _instance;
+    }
+
+    public override void DestroyInstance(ICarInstance instance)
+    {
+        instance.DestroyInstance();
+
+        if (_instance == null || _instance != instance)
+            throw new InvalidOperationException("Client car has no instance or instance not valid!");
+
+        _instance = null;
+    }
+
     private bool _hasUpdateToSend;
 
     // EntryCarBase implementation
@@ -64,16 +93,15 @@ public class EntryCarClient : EntryCarBase
         UpdatePing(_client, currentTime);
     }
 
-    public override CarStatus? GetPositionUpdateForClient(EntryCarClient clientCar)
-    {
-        // Just return the status if client is connected
-        return (_client != null) ? Status : null;
-    }
+    public override ICarInstance? GetBestInstanceFor(EntryCarClient clientCar) => _instance;
 
     // EntryCarClient API methods
     public bool IsInRange(CarStatus targetCar, float range)
     {
-        return Vector3.DistanceSquared(Status.Position, targetCar.Position) < (range * range);
+        if (_instance == null)
+            return false;
+
+        return Vector3.DistanceSquared(_instance.Status.Position, targetCar.Position) < (range * range);
     }
 
     public async Task DisconnectClient()
@@ -92,7 +120,15 @@ public class EntryCarClient : EntryCarBase
             return false;
         }
 
+        if (_instance != null)
+        {
+            Logger.Error("Trying to assign a car instance, but client already has instance! inst: `{_instance}`",
+                _instance.CarEntry.Name);
+            return false;
+        }
+
         _client = tcpClient;
+        CreateInstance();
         return true;
     }
 
@@ -106,6 +142,11 @@ public class EntryCarClient : EntryCarBase
             if (!force)
                 return false;
         }
+
+        if (_instance != null)
+            DestroyInstance(_instance);
+        else
+            Logger.Warning("Client has no car instance: `{_client.Name}`",tcpClient.Name);
 
         _client = null;
         return true;
@@ -131,61 +172,73 @@ public class EntryCarClient : EntryCarBase
         //TargetCar = null;
 
         // Fresh status
-        Status = new CarStatus();
+        //Status = new CarStatus();
+        _instance?.Reset();
     }
 
     internal void UpdateActiveTime()
     {
-        LastActiveTime = _sessionManager.ServerTimeMilliseconds;
+        LastActiveTime = SessionManager.ServerTimeMilliseconds;
         HasSentAfkWarning = false;
     }
 
     internal void UpdateClientPosition(in PositionUpdateIn positionUpdate)
     {
+        if (_client == null)
+            return;
+
+        if (_instance == null)
+        {
+            _client.Logger.Debug("Client has no car instance, disconnecting",
+                _client.Name, _client.SessionId);
+            Server.KickAsync(_client, "Invalid position update received");
+            return;
+        }
+
         if (!positionUpdate.IsValid())
         {
-            if (_client == null) 
-                return;
             _client.Logger.Debug("Invalid position update received from {ClientName} ({SessionId}), disconnecting",
                 _client.Name, _client.SessionId);
             Server.KickAsync(_client, "Invalid position update received");
-            //_ = _client.BeginDisconnectAsync();
             return;
         }
 
         _hasUpdateToSend = true;
         LastRemoteTimestamp = positionUpdate.LastRemoteTimestamp;
 
+        // Update status
+        CarStatus status = _instance.Status;
+
         const float afkMinSpeed = 20 / 3.6f;
-        if ((positionUpdate.StatusFlag != Status.StatusFlag || positionUpdate.Gas != Status.Gas || positionUpdate.SteerAngle != Status.SteerAngle)
-            && (_configuration.Extra.AfkKickBehavior != AfkKickBehavior.MinimumSpeed || positionUpdate.Velocity.LengthSquared() > afkMinSpeed * afkMinSpeed))
+        if ((positionUpdate.StatusFlag != status.StatusFlag || positionUpdate.Gas != status.Gas || positionUpdate.SteerAngle != status.SteerAngle)
+            && (ServerConfiguration.Extra.AfkKickBehavior != AfkKickBehavior.MinimumSpeed || positionUpdate.Velocity.LengthSquared() > afkMinSpeed * afkMinSpeed))
         {
             UpdateActiveTime();
         }
 
         // Reset if falling
-        if (Status.Velocity.Y < -75 && _client != null)
+        if (status.Velocity.Y < -75 && _client != null)
         {
-            _sessionManager.SendCurrentSession(_client);
+            SessionManager.SendCurrentSession(_client);
         }
 
-        Status.Timestamp = LastRemoteTimestamp + TimeOffset;
-        Status.PakSequenceId = positionUpdate.PakSequenceId;
-        Status.Position = positionUpdate.Position;
-        Status.Rotation = positionUpdate.Rotation;
-        Status.Velocity = positionUpdate.Velocity;
-        Status.TyreAngularSpeed[0] = positionUpdate.TyreAngularSpeedFL;
-        Status.TyreAngularSpeed[1] = positionUpdate.TyreAngularSpeedFR;
-        Status.TyreAngularSpeed[2] = positionUpdate.TyreAngularSpeedRL;
-        Status.TyreAngularSpeed[3] = positionUpdate.TyreAngularSpeedRR;
-        Status.SteerAngle = positionUpdate.SteerAngle;
-        Status.WheelAngle = positionUpdate.WheelAngle;
-        Status.EngineRpm = positionUpdate.EngineRpm;
-        Status.Gear = positionUpdate.Gear;
-        Status.StatusFlag = positionUpdate.StatusFlag;
-        Status.PerformanceDelta = positionUpdate.PerformanceDelta;
-        Status.Gas = positionUpdate.Gas;
-        Status.NormalizedPosition = positionUpdate.NormalizedPosition;
+        status.Timestamp = LastRemoteTimestamp + TimeOffset;
+        status.PakSequenceId = positionUpdate.PakSequenceId;
+        status.Position = positionUpdate.Position;
+        status.Rotation = positionUpdate.Rotation;
+        status.Velocity = positionUpdate.Velocity;
+        status.TyreAngularSpeed[0] = positionUpdate.TyreAngularSpeedFL;
+        status.TyreAngularSpeed[1] = positionUpdate.TyreAngularSpeedFR;
+        status.TyreAngularSpeed[2] = positionUpdate.TyreAngularSpeedRL;
+        status.TyreAngularSpeed[3] = positionUpdate.TyreAngularSpeedRR;
+        status.SteerAngle = positionUpdate.SteerAngle;
+        status.WheelAngle = positionUpdate.WheelAngle;
+        status.EngineRpm = positionUpdate.EngineRpm;
+        status.Gear = positionUpdate.Gear;
+        status.StatusFlag = positionUpdate.StatusFlag;
+        status.PerformanceDelta = positionUpdate.PerformanceDelta;
+        status.Gas = positionUpdate.Gas;
+        status.NormalizedPosition = positionUpdate.NormalizedPosition;
     }
 
     public override void PostUpdateCar()
@@ -202,13 +255,13 @@ public class EntryCarClient : EntryCarBase
     // Private methods
     private void CheckAfk(ACTcpClient client, long currentTime)
     {
-        if (!_configuration.Extra.EnableAntiAfk || client.IsAdministrator)
+        if (!ServerConfiguration.Extra.EnableAntiAfk || client.IsAdministrator)
             return;
 
         long timeAfk = currentTime - LastActiveTime;
-        if (timeAfk > _configuration.Extra.MaxAfkTimeMilliseconds)
-            _ = Task.Run(() => _acServer.KickAsync(client, "being AFK"));
-        else if (!HasSentAfkWarning && _configuration.Extra.MaxAfkTimeMilliseconds - timeAfk < 60000)
+        if (timeAfk > ServerConfiguration.Extra.MaxAfkTimeMilliseconds)
+            _ = Task.Run(() => Server.KickAsync(client, "being AFK"));
+        else if (!HasSentAfkWarning && ServerConfiguration.Extra.MaxAfkTimeMilliseconds - timeAfk < 60000)
         {
             HasSentAfkWarning = true;
             client.SendPacket(new ChatMessage { SessionId = 255, Message = "You will be kicked in 1 minute for being AFK." });

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace AssettoServer.Commands.TypeParsers;
 
-public class ACClientTypeParser : TypeParser<ACTcpClient>
+internal class ACClientTypeParser : TypeParser<ACTcpClient>
 {
     private readonly Lazy<EntryCarManager> _entryCarManager;
     private EntryCarManager CarManager => _entryCarManager.Value;

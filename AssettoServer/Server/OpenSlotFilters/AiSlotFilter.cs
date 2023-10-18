@@ -5,12 +5,12 @@ namespace AssettoServer.Server.OpenSlotFilters;
 
 public class AiSlotFilter : OpenSlotFilterBase
 {
-    private readonly EntryCarManager _entryCarManager;
+    //private readonly EntryCarManager _entryCarManager;
     private readonly ACServerConfiguration _configuration;
 
-    public AiSlotFilter(EntryCarManager entryCarManager, ACServerConfiguration configuration)
+    public AiSlotFilter(/*EntryCarManager entryCarManager, */ACServerConfiguration configuration)
     {
-        _entryCarManager = entryCarManager;
+        //_entryCarManager = entryCarManager;
         _configuration = configuration;
     }
 

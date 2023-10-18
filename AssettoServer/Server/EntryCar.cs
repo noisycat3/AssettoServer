@@ -3,10 +3,11 @@ using AssettoServer.Shared.Model;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using System.Collections.Generic;
 
 namespace AssettoServer.Server;
 
-public abstract class EntryCarBase : IEntryCar
+internal abstract class EntryCarBase : IEntryCar
 {
     // IEntry car interface
     public IACServer Server => _acServer;
@@ -19,16 +20,23 @@ public abstract class EntryCarBase : IEntryCar
     public abstract int TimeOffset { get; }
     public abstract string Name { get; }
 
+    public abstract int InstanceCount { get; }
+    public abstract int InstanceMax { get; }
+    public abstract IEnumerable<ICarInstance> Instances { get; }
+
+    public abstract ICarInstance CreateInstance();
+    public abstract void DestroyInstance(ICarInstance instance);
+
     public abstract bool HasUpdateToSend { get; }
 
     // Slot configuration
     private readonly EntryList.Entry _listEntry;
 
     // Game references
-    protected readonly ACServer _acServer;
-    protected readonly ACServerConfiguration _configuration;
-    protected readonly EntryCarManager _entryCarManager;
-    protected readonly SessionManager _sessionManager;
+    private readonly ACServer _acServer;
+    public ACServer ACServer => _acServer;
+    public ACServerConfiguration ServerConfiguration { get; }
+    public SessionManager SessionManager { get; }
 
     // Common car entry properties
     public int Ballast { get; internal set; }
@@ -56,15 +64,15 @@ public abstract class EntryCarBase : IEntryCar
     }
 
     protected EntryCarBase(byte inSessionId, EntryList.Entry entry,
-        ACServer acServer, ACServerConfiguration configuration, EntryCarManager entryCarManager, SessionManager sessionManager)
+        ACServer acServer, ACServerConfiguration configuration, SessionManager sessionManager)
     {
         SessionId = inSessionId;
         _listEntry = entry;
 
         _acServer = acServer;
-        _configuration = configuration;
-        _entryCarManager = entryCarManager;
-        _sessionManager = sessionManager;
+
+        ServerConfiguration = configuration;
+        SessionManager = sessionManager;
 
         Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -80,5 +88,5 @@ public abstract class EntryCarBase : IEntryCar
     public virtual void PostUpdateCar() { }
 
     // Called to retrieve the status for a particular car
-    public virtual CarStatus? GetPositionUpdateForClient(EntryCarClient clientCar) => null;
+    public virtual ICarInstance? GetBestInstanceFor(EntryCarClient clientCar) => null;
 }

@@ -15,11 +15,10 @@ using AssettoServer.Shared.Services;
 using AssettoServer.Shared.Utils;
 using Microsoft.Extensions.Hosting;
 using Serilog;
-using Serilog.Core;
 
 namespace AssettoServer.Network.Udp;
 
-public class ACUdpServer : CriticalBackgroundService
+internal class ACUdpServer : CriticalBackgroundService
 {
     private readonly ACServerConfiguration _configuration;
     private readonly SessionManager _sessionManager;

@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using AssettoServer.Server.Configuration;
+using System.Reflection;
 using AssettoServer.Shared.Configuration;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Plugin;
 using AssettoServer.Shared.Utils;
 using McMaster.NETCore.Plugins;
@@ -10,10 +11,13 @@ using Serilog;
 
 namespace AssettoServer.Server.Plugin;
 
-public class ACPluginLoader
+internal class ACPluginLoader
 {
     public Dictionary<string, PluginLoader> AvailablePlugins { get; } = new();
     public List<Plugin> LoadedPlugins { get; } = new();
+
+    public List<PluginV2> Plugins { get; } = new();
+    public Dictionary<Type, AssettoServerPlugin> PluginMap { get; } = new();
 
     public ACPluginLoader(bool loadFromWorkdir)
     {
@@ -85,8 +89,40 @@ public class ACPluginLoader
 
                 LoadedPlugins.Add(new Plugin(name, assembly, instance, configType, validatorType));
             }
+
+
         }
         
         Log.Information("Loaded plugin {PluginName}", name);
+    }
+
+    public void LoadPluginsV2(IACServer server, IEnumerable<string> enabledPlugins)
+    {
+        foreach (string pluginName in enabledPlugins)
+        {
+            if (!AvailablePlugins.TryGetValue(pluginName, out PluginLoader? loader))
+            {
+                throw new ConfigurationException($"No plugin found with name {pluginName}");
+            }
+
+            LoadSinglePluginV2(server, pluginName, loader);
+        }
+    }
+
+    private void LoadSinglePluginV2(IACServer server, string pluginName, PluginLoader pluginLoader)
+    {
+        Assembly assembly = pluginLoader.LoadDefaultAssembly();
+
+        foreach (var type in assembly.GetTypes())
+        {
+            if (!typeof(AssettoServerPlugin).IsAssignableFrom(type) || type.IsAbstract) 
+                continue;
+
+            AssettoServerPlugin instance = Activator.CreateInstance(type, server) as AssettoServerPlugin
+                                           ?? throw new InvalidOperationException("Could not create plugin instance");
+
+            Plugins.Add(new PluginV2(pluginName, assembly, instance));
+            PluginMap.Add(type, instance);
+        }
     }
 }

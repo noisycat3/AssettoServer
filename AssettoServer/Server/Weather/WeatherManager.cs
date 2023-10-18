@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using AssettoServer.Network.Tcp;
 using AssettoServer.Server.Configuration;
 using AssettoServer.Server.TrackParams;
 using AssettoServer.Server.Weather.Implementation;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Services;
 using AssettoServer.Shared.Utils;
 using AssettoServer.Shared.Weather;
@@ -17,7 +17,7 @@ using SunCalcNet.Model;
 
 namespace AssettoServer.Server.Weather;
 
-public class WeatherManager : CriticalBackgroundService
+internal class WeatherManager : CriticalBackgroundService, IWeatherManager
 {
     private readonly ACServerConfiguration _configuration;
     private readonly IWeatherImplementation _weatherImplementation;
@@ -85,7 +85,7 @@ public class WeatherManager : CriticalBackgroundService
         _weatherImplementation.SendWeather(CurrentWeather, CurrentDateTime);
     }
 
-    public void SendWeather(ACTcpClient? client = null) => _weatherImplementation.SendWeather(CurrentWeather, CurrentDateTime, client);
+    public void SendWeather(IClient client = null) => _weatherImplementation.SendWeather(CurrentWeather, CurrentDateTime, client);
 
     private void UpdateSunPosition()
     {

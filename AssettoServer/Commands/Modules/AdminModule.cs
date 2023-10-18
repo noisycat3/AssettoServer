@@ -19,7 +19,7 @@ namespace AssettoServer.Commands.Modules;
 
 [RequireAdmin]
 [UsedImplicitly(ImplicitUseKindFlags.Access, ImplicitUseTargetFlags.WithMembers)]
-public class AdminModule : ACModuleBase
+internal class AdminModule : ACModuleBase
 {
     private readonly ACServer _acServer;
     private readonly IWeatherImplementation _weatherImplementation;
@@ -160,7 +160,7 @@ public class AdminModule : ACModuleBase
     [Command("distance"), RequireConnectedPlayer]
     public void GetDistance([Remainder] ACTcpClient player)
     {
-        if (Context.Client?.CurrentCarStatus is {} contextStatus && player.ClientCar?.Status is {} playerStatus)
+        if (Context.Client?.CarInstance?.Status is {} contextStatus && player.CarInstance?.Status is {} playerStatus)
             Reply(Vector3.Distance(contextStatus.Position, playerStatus.Position).ToString(CultureInfo.InvariantCulture));
     }
 
@@ -177,7 +177,7 @@ public class AdminModule : ACModuleBase
     public void WhoIs(ACTcpClient player)
     {
         Reply($"IP: {(player.TcpClient.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address}\nProfile: https://steamcommunity.com/profiles/{player.Guid}\nPing: {player.ClientCar?.Ping}ms");
-        if (player.ClientCar?.Status is { } status)
+        if (player.CarInstance?.Status is { } status)
             Reply($"Position: {status.Position}\nVelocity: {(int)(status.Velocity.Length() * 3.6)}kmh");
         if (player.OwnerGuid.HasValue && player.Guid != player.OwnerGuid)
         {

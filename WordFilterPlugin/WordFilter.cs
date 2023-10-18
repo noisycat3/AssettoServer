@@ -3,12 +3,13 @@ using AssettoServer.Commands;
 using AssettoServer.Network.Tcp;
 using AssettoServer.Server;
 using AssettoServer.Server.OpenSlotFilters;
+using AssettoServer.Shared.Model;
 using AssettoServer.Shared.Network.Packets.Incoming;
 using AssettoServer.Shared.Network.Packets.Outgoing.Handshake;
 
 namespace WordFilterPlugin;
 
-public class WordFilter : OpenSlotFilterBase
+internal class WordFilter : OpenSlotFilterBase
 {
     private readonly EntryCarManager _entryCarManager;
     private readonly WordFilterConfiguration _configuration;
@@ -36,7 +37,7 @@ public class WordFilter : OpenSlotFilterBase
         }
     }
     
-    public override Task<AuthFailedResponse?> ShouldAcceptConnectionAsync(ACTcpClient client, HandshakeRequest request)
+    public override Task<AuthFailedResponse?> ShouldAcceptConnectionAsync(IClient client, HandshakeRequest request)
     {
         if (_configuration.ProhibitedUsernamePatterns.Any(regex => Regex.Match(request.Name, regex, RegexOptions.IgnoreCase).Success))
         {
