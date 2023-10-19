@@ -13,6 +13,11 @@ public class ClientConnectionEventArgs : EventArgs
     public required IClient Client { get; init; }
 }
 
+public class CarInstanceEventArgs : EventArgs
+{
+    public required ICarInstance CarInstance { get; init; }
+}
+
 public class HandshakeAcceptedEventArgs : EventArgs
 {
     public required HandshakeResponse HandshakeResponse { get; init; }

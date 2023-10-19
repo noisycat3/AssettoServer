@@ -275,7 +275,8 @@ internal class EntryCarManager
             }
             else
             {
-                for (int packetIndex = 0; packetIndex < packetArray.Length; packetIndex += chunkSize)
+                //for (int packetIndex = 0; packetIndex < packetArray.Length; packetIndex += chunkSize)
+                for (int packetIndex = 0; packetIndex < packetArray.Length; packetIndex++)
                 {
                     client.SendPacketUdp(packetArray[packetIndex]);
                     //client.SendPacketUdp(new BatchedPositionUpdate((uint)(timeMs - clientCar.TimeOffset), clientCar.Ping,

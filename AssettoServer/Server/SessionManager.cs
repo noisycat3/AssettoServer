@@ -57,7 +57,8 @@ internal class SessionManager : ISessionManager
         CurrentSession.Results = new Dictionary<byte, EntryCarResult>();
         CurrentSession.StartTimeMilliseconds = ServerTimeMilliseconds;
 
-        foreach (var entryCar in _entryCarManager.ClientCars)
+        //foreach (var entryCar in _entryCarManager.ClientCars)
+        foreach (var entryCar in _entryCarManager.EntryCars)
         {
             CurrentSession.Results.Add(entryCar.SessionId, new EntryCarResult());
         }

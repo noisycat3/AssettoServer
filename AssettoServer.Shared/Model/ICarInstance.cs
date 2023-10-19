@@ -12,6 +12,7 @@ public interface ICarInstance
     public CarStatus Status { get; }
 
     public void DestroyInstance();
+    public void HandleDestruction();
 
     /// <summary>
     ///  Fires when a car instance is destroyed

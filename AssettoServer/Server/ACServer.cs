@@ -133,6 +133,14 @@ internal class ACServer : CriticalBackgroundService, IACServer
         });
     }
 
+    internal void NotifyCarInstanceSpawned(ICarInstance instance)
+    {
+        CarInstanceSpawned?.Invoke(this, new CarInstanceEventArgs()
+        {
+            CarInstance = instance,
+        });
+    }
+
     private bool IsSessionOver()
     {
         if (_sessionManager.CurrentSession.Configuration.Type != SessionType.Race)
@@ -409,6 +417,7 @@ internal class ACServer : CriticalBackgroundService, IACServer
     }
 
     public event EventHandler<IACServer, ClientConnectionEventArgs>? ClientConnected;
+    public event EventHandler<IACServer, CarInstanceEventArgs>? CarInstanceSpawned;
     public event EventHandler<IACServer, ClientAuditEventArgs>? ClientKicked;
     public event EventHandler<IACServer, ClientAuditEventArgs>? ClientBanned;
     public event EventHandler<IACServer, ClientConnectionEventArgs>? ClientDisconnected;

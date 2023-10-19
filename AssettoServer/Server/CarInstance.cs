@@ -9,25 +9,21 @@ internal class CarInstance : ICarInstance
     {
         CarEntry = entry;
         Status = new CarStatus();
-
-        _isBeginDestroyed = false;
     }
 
     public IEntryCar CarEntry { get; }
     public CarStatus Status { get; private set; }
-
-    private bool _isBeginDestroyed;
+    
     public event EventHandler<ICarInstance, EventArgs>? Destroyed;
 
     public void DestroyInstance()
     {
-        if (_isBeginDestroyed)
-            return;
-        _isBeginDestroyed = true;
-        
-        // This might call destroy instance again
+        // Trigger the destruction process
         CarEntry.DestroyInstance(this);
+    }
 
+    public void HandleDestruction()
+    {
         // Callback
         Destroyed?.Invoke(this, EventArgs.Empty);
     }

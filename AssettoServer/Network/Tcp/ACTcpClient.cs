@@ -660,11 +660,15 @@ internal class ACTcpClient : IClient
         }
     }
 
+    private static readonly float[] _tempDamageArray = new[] {
+        0.0f, 0.0f, 0.0f, 0.0f, 0.0f
+    };
+
     private void OnCarListRequest(PacketReader reader)
     {
         CarListRequest carListRequest = reader.ReadPacket<CarListRequest>();
 
-        List<CarListResponse.Entry> carsInPage = _entryCarManager.ClientCars
+        List<CarListResponse.Entry> carsInPage = _entryCarManager.EntryCars
             .Skip(carListRequest.PageIndex).Take(10)
             .Select(e => new CarListResponse.Entry()
             {
@@ -674,8 +678,8 @@ internal class ACTcpClient : IClient
                 ClientName = e.Client?.Name ?? "<unknown>",
                 TeamName = e.Client?.Team ?? "<unknown>",
                 NationCode = e.Client?.NationCode ?? "<unknown>",
-                IsSpectator = e.IsSpectator,
-                DamageZoneLevel = e.ClientCarInstance?.Status.DamageZoneLevel.ToArray() ?? Enumerable.Repeat(0.0f, 5).ToArray(),
+                IsSpectator = e is EntryCarClient { IsSpectator: true },
+                DamageZoneLevel = (e as EntryCarClient)?.ClientCarInstance?.Status.DamageZoneLevel.ToArray() ?? _tempDamageArray,
             }).ToList();
 
         CarListResponse carListResponse = new CarListResponse
@@ -867,26 +871,28 @@ internal class ACTcpClient : IClient
         foreach (EntryCarClient otherClientCar in _entryCarManager.ClientCars)
         {
             if (otherClientCar != ClientCar)
+            {
                 SendPacket(new TyreCompoundUpdate
                 {
-                    SessionId = otherClientCar.SessionId, 
+                    SessionId = otherClientCar.SessionId,
                     CompoundName = otherClientCar.ClientCarInstance?.Status.CurrentTyreCompound
-                });
-        }
-
-        // Hide all AI cars if requested
-        if (_configuration.Extra.AiParams.HideAiCars)
-        {
-            foreach (EntryCarAi aiCar in _entryCarManager.AiCars)
-            {
-            
-                SendPacket(new CSPCarVisibilityUpdate
-                {
-                    SessionId = aiCar.SessionId,
-                    Visible = CSPCarVisibility.Invisible
                 });
             }
         }
+
+        // Hide all AI cars if requested
+        //if (_configuration.Extra.AiParams.HideAiCars)
+        //{
+        //    foreach (EntryCarAi aiCar in _entryCarManager.AiCars)
+        //    {
+            
+        //        SendPacket(new CSPCarVisibilityUpdate
+        //        {
+        //            SessionId = aiCar.SessionId,
+        //            Visible = CSPCarVisibility.Invisible
+        //        });
+        //    }
+        //}
 
         // TODO: sent DRS zones
 

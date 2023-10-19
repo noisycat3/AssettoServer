@@ -14,6 +14,11 @@ public interface IACServer
     public event EventHandler<IACServer, ClientConnectionEventArgs>? ClientConnected;
 
     /// <summary>
+    /// Fires when a new car instance is spawned. This is called both for AI cars and for player cars.
+    /// </summary>
+    public event EventHandler<IACServer, CarInstanceEventArgs>? CarInstanceSpawned;
+
+    /// <summary>
     /// Fires when a client has been kicked.
     /// </summary>
     public event EventHandler<IACServer, ClientAuditEventArgs>? ClientKicked;

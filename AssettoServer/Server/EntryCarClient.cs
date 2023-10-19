@@ -68,17 +68,17 @@ internal class EntryCarClient : EntryCarBase
             throw new InvalidOperationException("Client car can only have single instance!");
 
         _instance = new CarInstance(this);
+        ACServer.NotifyCarInstanceSpawned(_instance);
         return _instance;
     }
 
     public override void DestroyInstance(ICarInstance instance)
     {
-        instance.DestroyInstance();
-
         if (_instance == null || _instance != instance)
             throw new InvalidOperationException("Client car has no instance or instance not valid!");
-
         _instance = null;
+
+        instance.HandleDestruction();
     }
 
     private bool _hasUpdateToSend;
